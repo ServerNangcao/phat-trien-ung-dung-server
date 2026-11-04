@@ -50,8 +50,7 @@ public static class PaymentEndpoints
             logger.LogInformation("VNPay IPN confirmed payment for order {OrderId}, status {Status}", callback.TransactionId, callback.TransactionStatus);
             return Results.Ok(new { RspCode = "00", Message = "Success" });
         })
-        .WithName("VnPayIpn")
-        .WithOpenApi();
+        .WithName("VnPayIpn");
 
         // VNPay return URL (browser redirect after payment)
         group.MapGet("/vnpay/return", async (
@@ -70,7 +69,6 @@ public static class PaymentEndpoints
 
             return Results.Redirect(redirectUrl);
         })
-        .WithName("VnPayReturn")
-        .WithOpenApi();
+        .WithName("VnPayReturn");
     }
 }

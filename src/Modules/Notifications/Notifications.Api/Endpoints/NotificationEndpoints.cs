@@ -59,8 +59,7 @@ public static class NotificationEndpoints
             await emailRepository.UpdateAsync(dto with { Status = "Sent", SentAt = clock.UtcNow });
             return Results.Ok(new { EmailId = record.Value.Id });
         })
-        .WithName("SendEmail")
-        .WithOpenApi();
+        .WithName("SendEmail");
 
         // Query email history for an order
         group.MapGet("/order/{orderId:guid}", async (
@@ -70,8 +69,7 @@ public static class NotificationEndpoints
             var records = await emailRepository.ListByOrderAsync(orderId);
             return Results.Ok(records);
         })
-        .WithName("ListEmailsByOrder")
-        .WithOpenApi();
+        .WithName("ListEmailsByOrder");
     }
 }
 

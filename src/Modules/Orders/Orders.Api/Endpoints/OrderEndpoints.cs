@@ -26,8 +26,7 @@ public static class OrderEndpoints
                 id => Results.Ok(new { OrderId = id }),
                 error => Results.BadRequest(new { error.Code, error.Message }));
         })
-        .WithName("CreateOrder")
-        .WithOpenApi();
+        .WithName("CreateOrder");
     }
 }
 

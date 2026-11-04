@@ -7,6 +7,7 @@ using Ticketing.Modules.Orders.Infrastructure;
 using Ticketing.Modules.Orders.Infrastructure.Payment;
 using Ticketing.Modules.Orders.Infrastructure.Repositories;
 using Ticketing.Modules.Orders.Contracts;
+using Ticketing.SharedKernel;
 using MediatR;
 
 namespace Ticketing.Modules.Orders.Api;
@@ -22,6 +23,7 @@ public static class OrdersModuleRegistration
 
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IEventBus, EventBus>();
+        services.AddSingleton<IClock, SystemClock>();
         services.Configure<VnPayOptions>(configuration.GetSection("Payment:VnPay"));
         services.AddScoped<VnPayPaymentService>();
 
