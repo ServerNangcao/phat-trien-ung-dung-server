@@ -27,6 +27,15 @@ public class Program
                 options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
         }
 
+        // CORS for the auxiliary admin/organizer screens (Vite dev server + deployed UI).
+        // Production origins come from configuration; TV1's host owns the full policy.
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+        if (allowedOrigins.Length > 0)
+        {
+            builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+                policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
+        }
+
         // Local outbox delivery (TV1's central worker takes over in production).
         if (builder.Configuration.GetValue("IntegrationDelivery:Enabled", true))
         {
@@ -34,6 +43,11 @@ public class Program
         }
 
         var app = builder.Build();
+
+        if (allowedOrigins.Length > 0)
+        {
+            app.UseCors();
+        }
 
         app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Module = "Orders" }));
         app.MapOrderEndpoints();

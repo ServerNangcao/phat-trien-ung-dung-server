@@ -93,7 +93,7 @@ public static class OrderEndpoints
             RefundStatus? filter = Enum.TryParse<RefundStatus>(status, true, out var parsed) ? parsed : null;
             var refunds = await orderRepository.ListRefundRequestsAsync(filter);
             var dtos = refunds.Select(r => new RefundRequestDto(
-                r.Id, r.OrderId, r.Reason, r.Status.ToString(), r.CreatedAt, r.ProcessedAt)).ToList();
+                r.Id, r.OrderId, r.Reason, r.Status.ToString(), r.CreatedAt, r.ProcessedAt, r.ProcessedNote)).ToList();
             return Results.Ok(dtos);
         })
         .WithName("ListRefundRequests");
@@ -128,4 +128,4 @@ public static class OrderEndpoints
 public sealed record CreateOrderRequest(Guid CustomerId, Guid ReservationId);
 public sealed record RequestRefundRequest(string Reason);
 public sealed record ProcessRefundRequest(bool Approve, string? AdminNote = null);
-public sealed record RefundRequestDto(Guid Id, Guid OrderId, string Reason, string Status, DateTime CreatedAt, DateTime? ProcessedAt);
+public sealed record RefundRequestDto(Guid Id, Guid OrderId, string Reason, string Status, DateTime CreatedAt, DateTime? ProcessedAt, string? ProcessedNote = null);
