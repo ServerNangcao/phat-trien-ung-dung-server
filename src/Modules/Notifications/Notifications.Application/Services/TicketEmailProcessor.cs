@@ -138,6 +138,7 @@ public sealed class TicketEmailProcessor
                             <td style='border: 1px solid #ddd; padding: 8px;'>{{{{OrderId}}}}</td>
                         </tr>
                     </table>
+                    {{{{InvoiceSection}}}}
                     <p>Please present the QR code below at the entrance:</p>
                     <img src='{{{{QrCodeUrl}}}}' alt='Ticket QR Code' style='max-width: 200px;' />
                     <p>Thank you for your purchase!</p>
@@ -150,6 +151,50 @@ public sealed class TicketEmailProcessor
             : throw new InvalidOperationException($"Failed to build email template: {template.Error.Message}");
     }
 
+    /// <summary>
+    /// Invoice table with per-ticket-type pricing. Empty when the publisher did not
+    /// supply pricing, so older event payloads keep rendering without the section.
+    /// </summary>
+    private static string BuildInvoiceSection(TicketIssuedIntegrationEvent notification)
+    {
+        if (notification.TotalAmount <= 0)
+            return string.Empty;
+
+        var rows = notification.Items.Count > 0
+            ? string.Join("", notification.Items.Select(i => $@"
+                        <tr>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{HtmlEncode(i.TicketTypeName)}</td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{i.Quantity}</td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{FormatVnd(i.UnitPrice)}</td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{FormatVnd(i.Quantity * i.UnitPrice)}</td>
+                        </tr>"))
+            : $@"
+                        <tr>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{HtmlEncode(notification.TicketType)}</td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>1</td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{FormatVnd(notification.TotalAmount)}</td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'>{FormatVnd(notification.TotalAmount)}</td>
+                        </tr>";
+
+        return $@"
+                    <h3>Invoice</h3>
+                    <table style='border-collapse: collapse; width: 100%;'>
+                        <tr style='background-color: #f2f2f2;'>
+                            <th style='border: 1px solid #ddd; padding: 8px;'>Ticket</th>
+                            <th style='border: 1px solid #ddd; padding: 8px;'>Qty</th>
+                            <th style='border: 1px solid #ddd; padding: 8px;'>Price</th>
+                            <th style='border: 1px solid #ddd; padding: 8px;'>Subtotal</th>
+                        </tr>{rows}
+                        <tr>
+                            <td colspan='3' style='border: 1px solid #ddd; padding: 8px; text-align: right;'><strong>Total</strong></td>
+                            <td style='border: 1px solid #ddd; padding: 8px;'><strong>{FormatVnd(notification.TotalAmount)}</strong></td>
+                        </tr>
+                    </table>";
+    }
+
+    /// <summary>Culture-stable VND formatting: email HTML must not vary by server locale.</summary>
+    private static string FormatVnd(decimal amount) => amount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " VND";
+
     private static string RenderBody(string template, TicketIssuedIntegrationEvent notification, string qrImage)
     {
         return template
@@ -157,6 +202,7 @@ public sealed class TicketEmailProcessor
             .Replace("{{EventDate}}", HtmlEncode(notification.EventDate))
             .Replace("{{TicketType}}", HtmlEncode(notification.TicketType))
             .Replace("{{OrderId}}", notification.OrderId.ToString())
+            .Replace("{{InvoiceSection}}", BuildInvoiceSection(notification))
             .Replace("{{QrCodeUrl}}", HtmlAttributeEncode(qrImage));
     }
 

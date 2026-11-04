@@ -5,7 +5,6 @@ using Ticketing.Modules.Notifications.Contracts.IntegrationEvents;
 using Ticketing.Modules.Notifications.Domain.Entities;
 using Ticketing.SharedKernel;
 using Ticketing.Tests.Notifications.TestSupport;
-
 namespace Ticketing.Tests.Notifications.Handlers;
 
 public class TicketEmailProcessorTests
@@ -155,5 +154,51 @@ public class TicketEmailProcessorTests
         await processor.DeliverAsync(prepared.Email!);
         email.Sent[0].Body.Should().Contain("&lt;script&gt;");
         email.Sent[0].Body.Should().NotContain("<script>alert");
+    }
+
+    [Fact]
+    public async Task Prepare_WithPricingData_RendersInvoiceSection()
+    {
+        var (processor, _, email, _) = CreateProcessor();
+        var @event = ValidEvent() with
+        {
+            TotalAmount = 250_000m,
+            Items = new[] { new TicketItemDto("VIP", 2, 125_000m) }
+        };
+
+        var prepared = await processor.PrepareIncomingAsync(@event);
+        await processor.DeliverAsync(prepared.Email!);
+
+        email.Sent[0].Body.Should().Contain("Invoice");
+        email.Sent[0].Body.Should().Contain("VIP");
+        email.Sent[0].Body.Should().Contain("125,000 VND");
+        email.Sent[0].Body.Should().Contain("250,000 VND");
+    }
+
+    [Fact]
+    public async Task Prepare_WithoutPricingData_OmitsInvoiceSection()
+    {
+        var (processor, _, email, _) = CreateProcessor();
+
+        var prepared = await processor.PrepareIncomingAsync(ValidEvent());
+        await processor.DeliverAsync(prepared.Email!);
+
+        email.Sent[0].Body.Should().NotContain("Invoice"); // contract before the invoice extension
+    }
+
+    [Fact]
+    public async Task Prepare_InvoiceTicketNamesAreHtmlEncoded()
+    {
+        var (processor, _, email, _) = CreateProcessor();
+        var @event = ValidEvent() with
+        {
+            TotalAmount = 100_000m,
+            Items = new[] { new TicketItemDto("VIP <b>prime</b>", 1, 100_000m) }
+        };
+
+        var prepared = await processor.PrepareIncomingAsync(@event);
+
+        prepared.Email!.Body.Should().Contain("&lt;b&gt;prime&lt;/b&gt;");
+        prepared.Email.Body.Should().NotContain("<b>prime</b>");
     }
 }

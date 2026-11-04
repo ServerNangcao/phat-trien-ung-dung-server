@@ -20,4 +20,15 @@ public sealed record TicketIssuedIntegrationEvent : INotification
     public string TicketType { get; init; } = string.Empty;
     public string QrCodeUrl { get; init; } = string.Empty;
     public Guid? ReservationId { get; init; }
+
+    /// <summary>
+    /// Order total for the email invoice section. Zero means the publisher did not
+    /// supply pricing (contract before the invoice extension) and the section is omitted.
+    /// </summary>
+    public decimal TotalAmount { get; init; }
+
+    /// <summary>Per-ticket-type pricing for the invoice rows.</summary>
+    public IReadOnlyList<TicketItemDto> Items { get; init; } = Array.Empty<TicketItemDto>();
 }
+
+public sealed record TicketItemDto(string TicketTypeName, int Quantity, decimal UnitPrice);

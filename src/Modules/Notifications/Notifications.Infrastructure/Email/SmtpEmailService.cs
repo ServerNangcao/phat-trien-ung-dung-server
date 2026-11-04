@@ -21,6 +21,9 @@ public sealed class SmtpOptions
     public string? Password { get; init; }
     public string? From { get; init; }
     public bool UseSsl { get; init; } = true;
+
+    /// <summary>Base delay between transient retries, in seconds (2s then 4s in production).</summary>
+    public int RetryBaseDelaySeconds { get; init; } = 2;
 }
 
 public sealed class SmtpEmailService : IEmailService
@@ -99,7 +102,7 @@ public sealed class SmtpEmailService : IEmailService
                     // A per-attempt timeout surfaces as OperationCanceledException; the filter
                     // above lets it retry as long as the caller itself has not cancelled.
                     _logger.LogWarning(ex, "SMTP send attempt {Attempt}/{MaxAttempts} failed; retrying", attempt, maxAttempts);
-                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * _options.RetryBaseDelaySeconds), cancellationToken);
                 }
             }
         }
