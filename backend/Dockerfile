@@ -32,7 +32,7 @@ COPY backend/src/Modules/Notifications/Notifications.Internal/Notifications.Inte
 COPY backend/tests/Architecture.Tests/Architecture.Tests.csproj tests/Architecture.Tests/
 COPY backend/tests/Integration.Tests/Integration.Tests.csproj tests/Integration.Tests/
 
-RUN dotnet restore
+RUN dotnet restore Ticketing.slnx
 
 # Copy toàn bộ source code
 COPY backend/src/ src/
@@ -48,9 +48,8 @@ RUN dotnet publish src/Api/Ticketing.Api/Ticketing.Api.csproj \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Non-root user for security
-RUN adduser --disabled-password --gecos "" appuser
-USER appuser
+# Non-root user (built-in in .NET 8/9/10 images)
+USER app
 
 COPY --from=build /app/publish .
 

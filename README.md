@@ -71,7 +71,7 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
 | Phân hệ | Schema DB | Trách nhiệm & Nghiệp vụ cốt lõi |
 |---|---|---|
 | **Identity** | `identity` | • Đăng ký, đăng nhập email/mật khẩu, xác thực JWT + Refresh Token.<br>• Phân quyền theo vai trò (Customer, Organizer, Staff, Admin). |
-| **Events** | `events` | • Quản lý danh mục, địa điểm, sự kiện (Nháp → Chờ duyệt → Đang bán → Kết thúc).<br>• Tải ảnh bìa poster lên S3/Cloudflare R2.<br>• Bộ lọc sự kiện đa tiêu chí (danh mục, khoảng giá, ngày tổ chức).<br>• Dashboard thống kê doanh thu và lượng vé bán cho Organizer. |
+| **Events** | `events` | • Quản lý danh mục, địa điểm, sự kiện (Nháp → Chờ duyệt → Đang bán → Kết thúc).<br>• Tải ảnh bìa poster lên Cloudflare R2 / MinIO.<br>• Bộ lọc sự kiện đa tiêu chí (danh mục, khoảng giá, ngày tổ chức).<br>• Dashboard thống kê doanh thu và lượng vé bán cho Organizer. |
 | **Ticketing** | `ticketing` | • Thiết lập các hạng vé (giá, tổng số lượng mở bán, giới hạn mua mỗi đơn).<br>• **Giữ vé tạm thời (Reservation):** Tạm giữ vé trong 10 phút, tự động hoàn trả tồn kho nếu quá hạn.<br>• **Chống bán vượt vé (Over-selling):** Trừ kho nguyên tử bằng concurrency token / SQL atomic updates.<br>• Phát hành vé điện tử với mã QR ký số bảo mật `HMAC-SHA256`. |
 | **Orders** | `orders` | • Khởi tạo đơn hàng từ vé đang giữ.<br>• Tích hợp cổng thanh toán sandbox (VNPay / MoMo).<br>• Nhận và xử lý Webhook thanh toán an toàn, có cơ chế đối soát thanh toán trễ (`PaidAfterExpiry`) và tự động tạo `RefundRequest`. |
 | **CheckIn** | `checkin` | • Quét mã QR tại cổng kiểm soát, xác thực tính toàn vẹn chữ ký HMAC.<br>• Chặn tuyệt đối vé đã sử dụng (chống quay vòng vé).<br>• Báo cáo thời gian thực số lượng người tham dự đã vào cổng. |
@@ -97,7 +97,7 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
 
 ### Hạ tầng & DevOps
 - **Container hóa:** Docker, Docker Compose (Multi-stage build tối ưu kích thước image).
-- **Lưu trữ tệp:** Cloudflare R2 / MinIO (S3 API).
+- **Lưu trữ tệp:** Cloudflare R2 (Production) / MinIO (Local Dev).
 - **CI/CD:** GitHub Actions (tự động hóa build, test kiến trúc và deploy).
 
 ---
@@ -129,6 +129,7 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
 │       └── Integration.Tests/  # Kiểm tra tích hợp Outbox/Inbox và DbContext
 ├── frontend/                   # Ứng dụng giao diện người dùng
 ├── docker-compose.yml          # Môi trường chạy cục bộ (PostgreSQL, Redis, MinIO)
+├── PHAN_CONG_CONG_VIEC.md      # Kế hoạch phân chia công việc chi tiết 5 thành viên
 └── README.md
 ```
 
@@ -164,3 +165,17 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
    ```
    - Truy cập giao diện tài liệu API (Scalar/OpenAPI): `http://localhost:5000/openapi/v1.json` hoặc Swagger UI tương ứng.
    - Kiểm tra trạng thái hệ thống: `http://localhost:5000/health`.
+
+---
+
+## 7. Tài liệu dự án liên quan
+
+- [Bảng phân công nhiệm vụ nhóm 5 thành viên (Bản rút gọn)](BANG_PHAN_CONG_NHIEM_VU.md)
+- [Bảng phân chia công việc chi tiết (Kế hoạch 12 tuần & RACI)](PHAN_CONG_CONG_VIEC.md)
+- [Đặc tả kiến trúc chi tiết (ARCHITECTURE.md)](ARCHITECTURE.md)
+- [Kế hoạch khởi tạo kiến trúc Modular Monolith](Kế%20hoạch%20khởi%20tạo%20kiến%20trúc%20Modular%20Monolith%202%20project.md)
+- [Báo cáo Audit kiến trúc & Danh sách lỗi (note.md)](note.md)
+
+
+---
+
