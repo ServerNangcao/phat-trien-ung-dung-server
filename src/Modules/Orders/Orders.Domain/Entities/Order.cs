@@ -150,12 +150,13 @@ public sealed class Order : Entity
     }
 
     /// <summary>
-    /// Mark the refund as fully processed. Valid only from RefundRequested.
+    /// Mark the refund as fully processed. Valid from RefundRequested (customer-initiated)
+    /// or PaidAfterExpiry (ADR-0003 auto-refund).
     /// </summary>
     /// <param name="now">The current UTC timestamp.</param>
     public void MarkAsRefunded(DateTime now)
     {
-        if (Status != OrderStatus.RefundRequested)
+        if (Status is not (OrderStatus.RefundRequested or OrderStatus.PaidAfterExpiry))
             throw new InvalidOperationException($"Order {Id} cannot be refunded from status {Status}.");
 
         Status = OrderStatus.Refunded;

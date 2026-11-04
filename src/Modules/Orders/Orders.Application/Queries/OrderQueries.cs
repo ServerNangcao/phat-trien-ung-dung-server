@@ -1,6 +1,7 @@
 using MediatR;
 using Ticketing.Modules.Orders.Application.Ports;
 using Ticketing.Modules.Orders.Application.Repositories;
+using Ticketing.Modules.Orders.Domain.Entities;
 using Ticketing.SharedKernel;
 
 namespace Ticketing.Modules.Orders.Application.Queries;
@@ -78,30 +79,41 @@ public sealed class GetOrderDetailQueryHandler : IRequestHandler<GetOrderDetailQ
 /// </summary>
 public sealed record GetEventAttendeesQuery(Guid EventId) : IRequest<Result<IReadOnlyList<AttendeeDto>>>;
 
-public sealed record AttendeeDto(Guid TicketId, Guid OrderId, Guid CustomerId, string TicketType, string Status, DateTime IssuedAt);
+public sealed record AttendeeDto(Guid TicketId, Guid OrderId, Guid CustomerId, Guid TicketTypeId,
+    string TicketType, string Status, DateTime IssuedAt);
 
 public sealed class GetEventAttendeesQueryHandler : IRequestHandler<GetEventAttendeesQuery, Result<IReadOnlyList<AttendeeDto>>>
 {
     private readonly ITicketingModuleApi _ticketingModuleApi;
+    private readonly IOrderRepository _orderRepository;
 
-    public GetEventAttendeesQueryHandler(ITicketingModuleApi ticketingModuleApi)
+    public GetEventAttendeesQueryHandler(ITicketingModuleApi ticketingModuleApi, IOrderRepository orderRepository)
     {
         _ticketingModuleApi = ticketingModuleApi;
+        _orderRepository = orderRepository;
     }
 
     public async Task<Result<IReadOnlyList<AttendeeDto>>> Handle(GetEventAttendeesQuery request, CancellationToken cancellationToken)
     {
-        var result = await _ticketingModuleApi.GetTicketsByEventAsync(request.EventId, cancellationToken);
-        if (result.IsFailure)
-            return Result<IReadOnlyList<AttendeeDto>>.Failure(result.Error);
+        var ticketsResult = await _ticketingModuleApi.GetTicketsByEventAsync(request.EventId, cancellationToken);
+        if (ticketsResult.IsFailure)
+            return Result<IReadOnlyList<AttendeeDto>>.Failure(ticketsResult.Error);
 
-        var dtos = result.Value.Select(t => new AttendeeDto(
-            t.TicketId,
-            t.OrderId,
-            t.CustomerId,
-            t.TicketTypeName,
-            t.Status,
-            t.IssuedAtUtc)).ToList();
+        // Join Ticketing's issued tickets with Orders' payment state so the attendee list
+        // only contains tickets of orders that were actually paid.
+        var tickets = ticketsResult.Value;
+        var orderIds = tickets.Select(t => t.OrderId).Distinct().ToList();
+        var orders = await _orderRepository.ListByIdsAsync(orderIds, cancellationToken);
+        var paidOrderIds = orders
+            .Where(o => o.Status == OrderStatus.Paid)
+            .Select(o => o.Id)
+            .ToHashSet();
+
+        var dtos = tickets
+            .Where(t => paidOrderIds.Contains(t.OrderId))
+            .Select(t => new AttendeeDto(t.TicketId, t.OrderId, t.CustomerId,
+                t.TicketTypeId, t.TicketTypeName, t.Status, t.IssuedAtUtc))
+            .ToList();
 
         return Result<IReadOnlyList<AttendeeDto>>.Success(dtos);
     }

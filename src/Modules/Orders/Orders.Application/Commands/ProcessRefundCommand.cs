@@ -41,14 +41,19 @@ public sealed class ProcessRefundCommandHandler : IRequestHandler<ProcessRefundC
 
         if (request.Approve)
         {
-            if (order.Status != OrderStatus.Paid)
-                return Result<Guid>.Failure(Error.Validation("Cannot approve refund: order is not paid."));
+            // Approval completes a customer-initiated refund (RefundRequested) or the
+            // mandatory ADR-0003 late-payment refund (PaidAfterExpiry).
+            if (order.Status is not (OrderStatus.RefundRequested or OrderStatus.PaidAfterExpiry))
+                return Result<Guid>.Failure(Error.Validation("Cannot approve refund: the order is not awaiting a refund."));
 
             order.MarkAsRefunded(now);
             refund.MarkAsProcessed(now);
         }
         else
         {
+            if (order.Status != OrderStatus.RefundRequested)
+                return Result<Guid>.Failure(Error.Validation("Cannot reject refund: the order is not in RefundRequested state."));
+
             order.MarkRefundRejected(now);
             refund.MarkAsRejected(now);
         }

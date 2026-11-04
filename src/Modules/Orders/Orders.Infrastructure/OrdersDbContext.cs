@@ -80,7 +80,8 @@ public sealed class OrdersDbContext : BaseDbContext
     {
         // The order state change and its outbox rows commit in one transaction: either both
         // land or neither does, so an integration event can never be lost or orphaned.
-        var transaction = Database.CurrentTransaction is null
+        // The InMemory test provider supports no-op transactions only via a relational check.
+        var transaction = Database.IsRelational() && Database.CurrentTransaction is null
             ? await Database.BeginTransactionAsync(cancellationToken)
             : null;
 
@@ -119,10 +120,12 @@ public sealed class OrdersDbContext : BaseDbContext
             {
                 if (IntegrationEventMapper.Map(domainEvent, order) is { } integrationEvent)
                 {
+                    // Serialize as object: with the interface-typed variable STJ would emit
+                    // the (empty) marker interface metadata instead of the event's properties.
                     await Set<OutboxMessage>().AddAsync(new OutboxMessage
                     {
                         Type = integrationEvent.GetType().FullName!,
-                        Content = JsonSerializer.Serialize(integrationEvent, JsonOptions)
+                        Content = JsonSerializer.Serialize((object)integrationEvent, JsonOptions)
                     }, cancellationToken);
                 }
             }

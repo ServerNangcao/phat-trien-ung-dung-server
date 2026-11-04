@@ -18,7 +18,8 @@ public class Program
         // email flow is verifiable without a PostgreSQL server.
         if (string.Equals(builder.Configuration["Persistence:Provider"], "InMemory", StringComparison.OrdinalIgnoreCase))
         {
-            builder.Services.AddDbContext<NotificationsDbContext>(options => options.UseInMemoryDatabase("Ticketing.Notifications"));
+            var databaseName = builder.Configuration["Persistence:DatabaseName"] ?? "Ticketing.Notifications";
+            builder.Services.AddDbContext<NotificationsDbContext>(options => options.UseInMemoryDatabase(databaseName));
         }
         else
         {
@@ -26,7 +27,11 @@ public class Program
                 options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
         }
 
-        builder.Services.AddHostedService<EmailRetryWorker>();
+        // Background retry loop; gated so tests can drive retries deterministically.
+        if (builder.Configuration.GetValue("EmailRetry:Enabled", true))
+        {
+            builder.Services.AddHostedService<EmailRetryWorker>();
+        }
 
         var app = builder.Build();
 

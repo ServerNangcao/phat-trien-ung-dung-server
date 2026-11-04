@@ -18,7 +18,8 @@ public class Program
         // payment flow is verifiable without a PostgreSQL server.
         if (string.Equals(builder.Configuration["Persistence:Provider"], "InMemory", StringComparison.OrdinalIgnoreCase))
         {
-            builder.Services.AddDbContext<OrdersDbContext>(options => options.UseInMemoryDatabase("Ticketing.Orders"));
+            var databaseName = builder.Configuration["Persistence:DatabaseName"] ?? "Ticketing.Orders";
+            builder.Services.AddDbContext<OrdersDbContext>(options => options.UseInMemoryDatabase(databaseName));
         }
         else
         {

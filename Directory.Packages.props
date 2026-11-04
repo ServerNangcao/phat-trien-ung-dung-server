@@ -70,6 +70,8 @@
 
     <!-- QR Code -->
     <PackageVersion Include="QRCoder" Version="1.6.0" />
+    <!-- Pinned transitive dep of QRCoder; 5.0.0 has a known critical vulnerability (GHSA-rxg9-xrhp-64gj) -->
+    <PackageVersion Include="System.Drawing.Common" Version="9.0.0" />
 
     <!-- Test hosts / InMemory provider -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.0" />
