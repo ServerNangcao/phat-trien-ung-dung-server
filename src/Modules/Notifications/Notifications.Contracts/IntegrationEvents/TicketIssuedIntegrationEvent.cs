@@ -3,11 +3,14 @@ using MediatR;
 namespace Ticketing.Modules.Notifications.Contracts.IntegrationEvents;
 
 /// <summary>
-/// Integration event published by the Ticketing module when a ticket is issued.
-/// Notifications module subscribes to this to send the email with QR code.
+/// Integration event published by the Ticketing module (TV4) when a ticket is issued.
+/// The Notifications module subscribes via the Inbox pattern to send the ticket email
+/// with the embedded QR code. EventId drives inbox dedupe so a redelivered event
+/// never triggers a second email.
 /// </summary>
 public sealed record TicketIssuedIntegrationEvent : INotification
 {
+    public Guid EventId { get; init; }
     public Guid TicketId { get; init; }
     public Guid OrderId { get; init; }
     public Guid CustomerId { get; init; }

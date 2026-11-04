@@ -23,8 +23,8 @@ public static class OrdersModuleRegistration
     {
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateOrderCommandHandler).Assembly));
 
-        services.AddDbContext<OrdersDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("Default")));
+        // DbContext registration lives in the composition root (Program.cs / TV1's host),
+        // which chooses the provider (Npgsql or InMemory for dev/test).
 
         services.AddScoped<IOrderRepository, OrderRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();

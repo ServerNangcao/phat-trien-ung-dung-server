@@ -65,17 +65,39 @@ public sealed class SmtpEmailService : IEmailService
 
     private async Task SendAsyncInternal(MimeMessage message, CancellationToken cancellationToken)
     {
-        using var client = new SmtpClient();
+        // Transient retry (3s, 6s backoff) keeps a flaky connection inside the 30s email
+        // delivery budget; authentication failures are permanent and not retried.
+        const int maxAttempts = 3;
 
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            await client.ConnectAsync(_options.Host ?? "smtp.example.com", _options.Port, _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None, cancellationToken);
-            await client.AuthenticateAsync(_options.User ?? "", _options.Password ?? "", cancellationToken);
-            await client.SendAsync(message, cancellationToken);
-        }
-        finally
-        {
-            await client.DisconnectAsync(true, cancellationToken);
+            // Hard 10s bound per attempt so a hung SMTP endpoint cannot stall the pipeline.
+            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            attemptCts.CancelAfter(TimeSpan.FromSeconds(10));
+
+            try
+            {
+                using var client = new SmtpClient();
+                await client.ConnectAsync(
+                    _options.Host ?? "smtp.example.com",
+                    _options.Port,
+                    _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
+                    attemptCts.Token);
+                await client.AuthenticateAsync(_options.User ?? "", _options.Password ?? "", attemptCts.Token);
+                await client.SendAsync(message, attemptCts.Token);
+                await client.DisconnectAsync(true, attemptCts.Token);
+                return;
+            }
+            catch (Exception ex) when (
+                attempt < maxAttempts
+                && !cancellationToken.IsCancellationRequested
+                && ex is not MailKit.Security.AuthenticationException)
+            {
+                // A per-attempt timeout surfaces as OperationCanceledException; the filter
+                // above lets it retry as long as the caller itself has not cancelled.
+                _logger.LogWarning(ex, "SMTP send attempt {Attempt}/{MaxAttempts} failed; retrying", attempt, maxAttempts);
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 3), cancellationToken);
+            }
         }
     }
 }

@@ -1,11 +1,12 @@
 using System;
-using Ticketing.SharedKernel.Domain;
 using Ticketing.SharedKernel;
+using Ticketing.SharedKernel.Domain;
 
 namespace Ticketing.Modules.Notifications.Domain.Entities;
 
 /// <summary>
 /// Represents a record of an email that was sent (or attempted) by the system.
+/// Lifecycle: Pending → Sent, or Pending → Failed (with scheduled retries) → Sent.
 /// </summary>
 public sealed class EmailHistory : Entity
 {
@@ -45,9 +46,19 @@ public sealed class EmailHistory : Entity
     public EmailStatus Status { get; private set; }
 
     /// <summary>
-    /// Number of retry attempts performed.
+    /// Number of send attempts performed.
     /// </summary>
     public int RetryCount { get; private set; }
+
+    /// <summary>
+    /// Earliest time the next retry may run. Null when no retry is scheduled.
+    /// </summary>
+    public DateTime? NextRetryAt { get; private set; }
+
+    /// <summary>
+    /// The error from the most recent failed attempt. Null until a failure occurs.
+    /// </summary>
+    public string? LastError { get; private set; }
 
     private EmailHistory(
         Guid id,
@@ -73,12 +84,6 @@ public sealed class EmailHistory : Entity
     /// <summary>
     /// Creates a new <see cref="EmailHistory"/> instance with validation.
     /// </summary>
-    /// <param name="orderId">Order ID associated with this email.</param>
-    /// <param name="to">Recipient address.</param>
-    /// <param name="subject">Email subject.</param>
-    /// <param name="body">Email body.</param>
-    /// <param name="createdAt">Creation timestamp.</param>
-    /// <returns>A <see cref="Result{EmailHistory}"/> indicating success or validation failure.</returns>
     public static Result<EmailHistory> Create(Guid orderId, string to, string subject, string body, DateTime createdAt)
     {
         if (orderId == Guid.Empty)
@@ -86,6 +91,9 @@ public sealed class EmailHistory : Entity
 
         if (string.IsNullOrWhiteSpace(to))
             return Result<EmailHistory>.Failure(Error.Validation("Recipient address ('To') is required."));
+
+        if (!to.Contains('@'))
+            return Result<EmailHistory>.Failure(Error.Validation("Recipient address is not a valid email."));
 
         if (string.IsNullOrWhiteSpace(subject))
             return Result<EmailHistory>.Failure(Error.Validation("Subject is required."));
@@ -110,20 +118,29 @@ public sealed class EmailHistory : Entity
     /// <summary>
     /// Marks the email as sent.
     /// </summary>
-    /// <param name="sentAt">Timestamp of sending.</param>
     public void MarkSent(DateTime sentAt)
     {
         SentAt = sentAt;
         Status = EmailStatus.Sent;
+        NextRetryAt = null;
     }
 
     /// <summary>
-    /// Marks the email as failed and increments the retry counter.
+    /// Marks the email as failed and increments the attempt counter.
     /// </summary>
-    public void MarkFailed()
+    public void MarkFailed(string? error = null)
     {
         RetryCount++;
         Status = EmailStatus.Failed;
+        LastError = error;
+    }
+
+    /// <summary>
+    /// Schedules the next retry; the email stays Failed until a later attempt succeeds.
+    /// </summary>
+    public void ScheduleRetry(DateTime nextRetryAt)
+    {
+        NextRetryAt = nextRetryAt;
     }
 }
 
@@ -138,6 +155,6 @@ public enum EmailStatus
     /// <summary>Successfully sent.</summary>
     Sent,
 
-    /// <summary>Failed to send.</summary>
+    /// <summary>Failed to send (awaiting retry or exhausted).</summary>
     Failed
 }

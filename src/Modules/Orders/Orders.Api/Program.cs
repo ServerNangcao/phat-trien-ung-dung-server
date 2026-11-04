@@ -20,6 +20,11 @@ public class Program
         {
             builder.Services.AddDbContext<OrdersDbContext>(options => options.UseInMemoryDatabase("Ticketing.Orders"));
         }
+        else
+        {
+            builder.Services.AddDbContext<OrdersDbContext>(options =>
+                options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+        }
 
         // Local outbox delivery (TV1's central worker takes over in production).
         if (builder.Configuration.GetValue("IntegrationDelivery:Enabled", true))

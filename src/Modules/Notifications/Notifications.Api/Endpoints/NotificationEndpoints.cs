@@ -3,9 +3,11 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using MediatR;
+using Ticketing.Modules.Notifications.Application.Repositories;
 using Ticketing.Modules.Notifications.Application.Services;
 using Ticketing.Modules.Notifications.Contracts;
-using Ticketing.Modules.Notifications.Contracts.IntegrationEvents;
+using Ticketing.Modules.Notifications.Domain.Entities;
+using Ticketing.SharedKernel;
 
 namespace Ticketing.Modules.Notifications.Api.Endpoints;
 
@@ -15,49 +17,34 @@ public static class NotificationEndpoints
     {
         var group = app.MapGroup("/api/notifications");
 
-        // Send a test/transactional email (used by admin or internal services)
+        // Send a transactional email (admin/internal services)
         group.MapPost("/send", async (
             [FromBody] SendEmailRequest request,
             [FromServices] IEmailRepository emailRepository,
             [FromServices] IEmailService emailService,
-            [FromServices] Ticketing.SharedKernel.IClock clock) =>
+            [FromServices] IClock clock) =>
         {
-            var record = Ticketing.Modules.Notifications.Domain.Entities.EmailHistory.Create(
-                request.OrderId,
-                request.To,
-                request.Subject,
-                request.Body,
-                clock.UtcNow);
-
+            var record = EmailHistory.Create(request.OrderId, request.To, request.Subject, request.Body, clock.UtcNow);
             if (record.IsFailure)
                 return Results.BadRequest(new { error = record.Error.Message });
 
-            var dto = new EmailHistoryDto(
-                record.Value.Id,
-                record.Value.OrderId,
-                record.Value.To,
-                record.Value.Subject,
-                record.Value.Body,
-                record.Value.Status.ToString(),
-                record.Value.SentAt,
-                record.Value.CreatedAt,
-                record.Value.RetryCount);
-
-            await emailRepository.AddAsync(dto);
+            var email = record.Value;
+            await emailRepository.AddAsync(email);
 
             try
             {
                 await emailService.SendAsync(request.To, request.Subject, request.Body, true);
-                record.Value.MarkSent(clock.UtcNow);
+                email.MarkSent(clock.UtcNow);
             }
-            catch
+            catch (Exception ex)
             {
-                record.Value.MarkFailed();
-                return Results.StatusCode(StatusCodes.Status502BadGateway);
+                email.MarkFailed(ex.Message);
+                email.ScheduleRetry(clock.UtcNow.AddSeconds(10));
             }
 
-            await emailRepository.UpdateAsync(dto with { Status = "Sent", SentAt = clock.UtcNow });
-            return Results.Ok(new { EmailId = record.Value.Id });
+            await emailRepository.UpdateAsync(email);
+
+            return Results.Ok(new { EmailId = email.Id, Status = email.Status.ToString() });
         })
         .WithName("SendEmail");
 
@@ -67,10 +54,23 @@ public static class NotificationEndpoints
             [FromServices] IEmailRepository emailRepository) =>
         {
             var records = await emailRepository.ListByOrderAsync(orderId);
-            return Results.Ok(records);
+            return Results.Ok(records.Select(MapToDto));
         })
         .WithName("ListEmailsByOrder");
     }
+
+    private static EmailHistoryDto MapToDto(EmailHistory entity) => new(
+        entity.Id,
+        entity.OrderId,
+        entity.To,
+        entity.Subject,
+        entity.Body,
+        entity.Status.ToString(),
+        entity.SentAt,
+        entity.CreatedAt,
+        entity.RetryCount,
+        entity.NextRetryAt,
+        entity.LastError);
 }
 
 public sealed record SendEmailRequest(Guid OrderId, string To, string Subject, string Body);

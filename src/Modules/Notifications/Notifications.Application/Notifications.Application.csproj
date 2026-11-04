@@ -13,7 +13,7 @@
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="MediatR" />
     <PackageReference Include="MediatR.Contracts" />
-    <PackageReference Include="MailKit" />
-    <PackageReference Include="MimeKit" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="QRCoder" />
   </ItemGroup>
 </Project>

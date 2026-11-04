@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Ticketing.Modules.Notifications.Api.Background;
 using Ticketing.Modules.Notifications.Api.Endpoints;
 using Ticketing.Modules.Notifications.Infrastructure;
 
@@ -19,11 +20,19 @@ public class Program
         {
             builder.Services.AddDbContext<NotificationsDbContext>(options => options.UseInMemoryDatabase("Ticketing.Notifications"));
         }
+        else
+        {
+            builder.Services.AddDbContext<NotificationsDbContext>(options =>
+                options.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
+        }
+
+        builder.Services.AddHostedService<EmailRetryWorker>();
 
         var app = builder.Build();
 
         app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Module = "Notifications" }));
         app.MapNotificationEndpoints();
+        app.MapIntegrationEventEndpoints();
 
         await app.RunAsync();
     }

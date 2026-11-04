@@ -1,7 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Ticketing.Infrastructure.Core.Outbox;
 using Ticketing.Infrastructure.Core.Persistence;
 using Ticketing.Modules.Notifications.Domain.Entities;
-using Ticketing.Modules.Notifications.Domain.ValueObjects;
 
 namespace Ticketing.Modules.Notifications.Infrastructure;
 
@@ -10,6 +10,7 @@ public sealed class NotificationsDbContext : BaseDbContext
     public override string Schema => "notifications";
 
     public DbSet<EmailHistory> EmailHistories => Set<EmailHistory>();
+    public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
 
     public NotificationsDbContext(DbContextOptions<NotificationsDbContext> options) : base(options)
     {
@@ -32,10 +33,22 @@ public sealed class NotificationsDbContext : BaseDbContext
             builder.Property(e => e.SentAt);
             builder.Property(e => e.CreatedAt).IsRequired();
             builder.Property(e => e.RetryCount).IsRequired();
+            builder.Property(e => e.LastError).HasMaxLength(1000);
 
             builder.HasIndex(e => e.OrderId);
-            builder.HasIndex(e => e.To);
             builder.HasIndex(e => e.Status);
+        });
+
+        modelBuilder.Entity<InboxMessage>(builder =>
+        {
+            builder.ToTable("inbox_messages");
+            builder.HasKey(m => m.Id);
+            builder.Property(m => m.EventId).IsRequired();
+            builder.Property(m => m.EventType).IsRequired().HasMaxLength(500);
+            builder.Property(m => m.Payload).IsRequired();
+            builder.Property(m => m.ReceivedAt).IsRequired();
+
+            builder.HasIndex(m => m.EventId).IsUnique();
         });
     }
 }
