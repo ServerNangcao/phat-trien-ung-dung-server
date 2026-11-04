@@ -25,6 +25,9 @@ dist/
 .agents/
 .agent/
 
+## Mimosa
+.mimosa/
+
 ## Markdown docs (except README.md)
 *.md
 docs/**/*.md
