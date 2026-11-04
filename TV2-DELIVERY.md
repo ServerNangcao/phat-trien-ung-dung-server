@@ -17,8 +17,14 @@ dotnet run --project src/Modules/Orders/Orders.Api -- --Persistence:Provider=InM
 node scripts/mock-ticketing.js   # serves GET /api/ticketing/reservations/{id} and /events/{id}/tickets on :5003
 ```
 
-Tests: `dotnet test` — 64 tests (41 Orders + 23 Notifications pass; 3 Testcontainers
-Postgres tests skip when Docker is absent and run in CI with Docker).
+Tests: `dotnet test` — 78 tests (75 pass; 3 Testcontainers Postgres tests skip when
+Docker is absent and run in CI with Docker).
+
+UI E2E: `cd backend/admin-ui && npm run test:e2e` — Playwright boots the full stack
+(Orders.Api on InMemory, mock Ticketing, built UI preview), seeds data through the real
+API flow, and verifies the three screens end to end (order search + detail, attendee
+paid-orders join, refund approve with audit note → order Refunded). Requires the
+Playwright Chromium once (`npx playwright install chromium`).
 
 ## Flow (Orders)
 
