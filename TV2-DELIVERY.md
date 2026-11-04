@@ -51,15 +51,18 @@ Postgres tests skip when Docker is absent and run in CI with Docker).
 ## Flow (Notifications)
 
 1. Other modules' outbox workers deliver `POST /api/integration-events/ticket-issued`.
-   The Inbox pattern dedupes by `EventId` (pre-check + unique index), acks 202
-   immediately, and sends the email in a background scope so callers never block on SMTP.
-2. `TicketIssuedHandler` renders the HTML template (event fields HTML-encoded), embeds
-   the QR (`QrCodeUrl` from Ticketing, or a locally generated data-URI fallback via
-   QRCoder), records `EmailHistory`, and marks Sent/Failed.
-3. Delivery budget < 30s: `SmtpEmailService` retries transient failures 3× (3s/6s
-   backoff, 10s hard bound per attempt); `EmailRetryProcessor` (10s worker) retries
-   failed sends at 10s..60s backoff up to 5 attempts and recovers Pending emails
-   abandoned by a crash after 30s.
+   Events without an `EventId` are rejected (400) — dedupe is impossible without one.
+   The Inbox pattern stages the event and the Pending email history row, and commits
+   them atomically, so a crash after the 202 ack is recovered by the retry worker
+   (Pending sweep) instead of losing the email. A redelivered event is answered with
+   `{duplicated: true}` and never sends twice.
+2. `TicketEmailProcessor` owns the single send lifecycle: renders the HTML template
+   (event fields HTML-encoded), embeds the QR (`QrCodeUrl` from Ticketing, or a locally
+   generated data-URI fallback via QRCoder), and marks Sent / Failed + backoff.
+3. Delivery budget < 30s: `SmtpEmailService` retries transient failures 3× (2s/4s
+   backoff, 8s hard bound per attempt — worst case ≈ 30s); `EmailRetryProcessor`
+   (10s worker) retries failed sends at 10s..60s backoff up to 5 attempts and recovers
+   Pending emails abandoned by a crash after 30s.
 4. `GET /api/notifications/order/{orderId}` exposes history and status.
 
 ## Verification evidence

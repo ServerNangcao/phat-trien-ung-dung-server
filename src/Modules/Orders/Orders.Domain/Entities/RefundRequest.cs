@@ -33,6 +33,11 @@ public sealed class RefundRequest : Entity
     /// </summary>
     public RefundStatus Status { get; private set; }
 
+    /// <summary>
+    /// The admin note recorded when the request was processed or rejected.
+    /// </summary>
+    public string? ProcessedNote { get; private set; }
+
     private RefundRequest(Guid id, Guid orderId, string reason, DateTime createdAt)
         : base(id)
     {
@@ -65,26 +70,30 @@ public sealed class RefundRequest : Entity
     /// Mark this refund request as processed. Valid only from Pending.
     /// </summary>
     /// <param name="now">The current UTC timestamp.</param>
-    public void MarkAsProcessed(DateTime now)
+    /// <param name="note">The admin decision note kept for audit.</param>
+    public void MarkAsProcessed(DateTime now, string? note = null)
     {
         if (Status != RefundStatus.Pending)
             throw new InvalidOperationException($"Refund request {Id} cannot transition from {Status} to Processed.");
 
         ProcessedAt = now;
         Status = RefundStatus.Processed;
+        ProcessedNote = note;
     }
 
     /// <summary>
     /// Mark this refund request as rejected. Valid only from Pending.
     /// </summary>
     /// <param name="now">The current UTC timestamp.</param>
-    public void MarkAsRejected(DateTime now)
+    /// <param name="note">The admin decision note kept for audit.</param>
+    public void MarkAsRejected(DateTime now, string? note = null)
     {
         if (Status != RefundStatus.Pending)
             throw new InvalidOperationException($"Refund request {Id} cannot transition from {Status} to Rejected.");
 
         ProcessedAt = now;
         Status = RefundStatus.Rejected;
+        ProcessedNote = note;
     }
 }
 

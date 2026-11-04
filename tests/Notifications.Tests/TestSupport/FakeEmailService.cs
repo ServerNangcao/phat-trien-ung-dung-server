@@ -26,7 +26,7 @@ public sealed class FakeEmailService : IEmailService
     public Task SendAsync(IReadOnlyList<string> to, string subject, string body, bool isHtml = true, CancellationToken cancellationToken = default)
     {
         foreach (var recipient in to)
-            return SendAsync(recipient, subject, body, isHtml, cancellationToken);
+            Sent.Add((recipient, subject, body));
 
         return Task.CompletedTask;
     }

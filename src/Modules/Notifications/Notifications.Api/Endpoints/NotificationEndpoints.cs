@@ -38,6 +38,10 @@ public static class NotificationEndpoints
                 await emailService.SendAsync(request.To, request.Subject, request.Body, true);
                 email.MarkSent(clock.UtcNow);
             }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 email.MarkFailed(ex.Message);

@@ -16,8 +16,9 @@ public static class PaymentEndpoints
         var group = app.MapGroup("/api/payments");
 
         // VNPay IPN callback (server-to-server, no browser redirect).
-        // VNPay retries this endpoint until it receives a 200, so every path below either
-        // commits state idempotently or acks without changing state.
+        // Responses follow the VNPay contract: HTTP 200 with a RspCode. 00 confirms
+        // processing (and stops VNPay's retries); a specific code (01/04/97/99) reports
+        // a permanent condition without leaving VNPay retrying forever.
         group.MapPost("/vnpay/ipn", async (
             HttpContext context,
             [FromServices] VnPayPaymentService vnPayService,
@@ -31,12 +32,12 @@ public static class PaymentEndpoints
 
             if (!isValid)
             {
-                return Results.BadRequest(new { RspCode = "99", Message = "Invalid signature" });
+                return Results.Ok(new { RspCode = "97", Message = "Invalid signature" });
             }
 
-            // ResponseCode other than "00" means the payment failed at the gateway;
-            // ack receipt so VNPay stops retrying and leave the order Pending for a retry.
-            if (callback.ResponseCode != "00")
+            // Both gates must be success: ResponseCode is the gateway result and
+            // TransactionStatus the transaction state (e.g. suspected fraud stays non-00).
+            if (callback.ResponseCode != "00" || callback.TransactionStatus != "00")
             {
                 return Results.Ok(new { RspCode = "00", Message = "Payment not successful; no state change" });
             }
@@ -45,7 +46,13 @@ public static class PaymentEndpoints
 
             if (result.IsFailure)
             {
-                return Results.BadRequest(new { RspCode = "99", Message = result.Error.Message });
+                var rspCode = result.Error.Code switch
+                {
+                    "NotFound" => "01",        // order not found
+                    "ValidationError" => "04", // invalid amount / state
+                    _ => "99"
+                };
+                return Results.Ok(new { RspCode = rspCode, Message = result.Error.Message });
             }
 
             return Results.Ok(new { RspCode = "00", Message = "Success", OrderId = result.Value.OrderId });

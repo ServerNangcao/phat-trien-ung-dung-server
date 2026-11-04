@@ -5,8 +5,8 @@ namespace Ticketing.Tests.Orders.TestSupport;
 
 /// <summary>
 /// Computes VNPay HMAC-SHA512 signatures from an independent implementation of the
-/// documented algorithm (sorted params, URL-encoded, joined with &amp;), so the service
-/// under test is cross-checked against the spec rather than against itself.
+/// documented algorithm (sorted raw key=value pairs joined with &amp;, RAW values — not
+/// URL-encoded), so the service under test is cross-checked against the spec.
 /// The secret must match the Orders.Api appsettings used by the WAF tests.
 /// </summary>
 public static class VnPayTestHelper
@@ -19,7 +19,7 @@ public static class VnPayTestHelper
         var queryString = string.Join("&", data
             .Where(kvp => !string.IsNullOrEmpty(kvp.Value))
             .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
-            .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value!)}"));
+            .Select(kvp => $"{kvp.Key}={kvp.Value!}"));
 
         using var hmac = new HMACSHA512(Encoding.ASCII.GetBytes(HashSecret));
         var hash = hmac.ComputeHash(Encoding.ASCII.GetBytes(queryString));
@@ -27,7 +27,7 @@ public static class VnPayTestHelper
     }
 
     /// <summary>Builds an escaped IPN query string with a valid signature (or a tampered amount).</summary>
-    public static string BuildIpnQuery(Guid orderId, decimal amountVnd, bool tamperAmount = false)
+    public static string BuildIpnQuery(Guid orderId, decimal amountVnd, bool tamperAmount = false, string transactionStatus = "00")
     {
         var data = new Dictionary<string, string?>
         {
@@ -42,7 +42,7 @@ public static class VnPayTestHelper
             ["vnp_BankCode"] = "NCB",
             ["vnp_PayDate"] = DateTime.UtcNow.ToString("yyyyMMddHHmmss"),
             ["vnp_ResponseCode"] = "00",
-            ["vnp_TransactionStatus"] = "00",
+            ["vnp_TransactionStatus"] = transactionStatus,
             ["vnp_TransactionNo"] = "14000001"
         };
 

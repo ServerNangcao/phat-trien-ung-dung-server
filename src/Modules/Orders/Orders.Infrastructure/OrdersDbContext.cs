@@ -60,6 +60,7 @@ public sealed class OrdersDbContext : BaseDbContext
             builder.Property(r => r.Reason).IsRequired().HasMaxLength(500);
             builder.Property(r => r.CreatedAt).IsRequired();
             builder.Property(r => r.Status).HasConversion<string>();
+            builder.Property(r => r.ProcessedNote).HasMaxLength(1000);
 
             builder.HasOne<Order>()
                 .WithMany()

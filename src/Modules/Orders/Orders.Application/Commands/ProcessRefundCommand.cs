@@ -47,7 +47,7 @@ public sealed class ProcessRefundCommandHandler : IRequestHandler<ProcessRefundC
                 return Result<Guid>.Failure(Error.Validation("Cannot approve refund: the order is not awaiting a refund."));
 
             order.MarkAsRefunded(now);
-            refund.MarkAsProcessed(now);
+            refund.MarkAsProcessed(now, request.AdminNote);
         }
         else
         {
@@ -55,7 +55,7 @@ public sealed class ProcessRefundCommandHandler : IRequestHandler<ProcessRefundC
                 return Result<Guid>.Failure(Error.Validation("Cannot reject refund: the order is not in RefundRequested state."));
 
             order.MarkRefundRejected(now);
-            refund.MarkAsRejected(now);
+            refund.MarkAsRejected(now, request.AdminNote);
         }
 
         await _unitOfWork.CommitAsync(cancellationToken);

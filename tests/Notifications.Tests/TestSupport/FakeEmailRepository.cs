@@ -52,9 +52,18 @@ public sealed class FakeUnitOfWork(FakeEmailRepository repository) : IUnitOfWork
 {
     public int CommitCount { get; private set; }
 
+    /// <summary>When set, the next commit returns this result instead of persisting (simulates a unique-index race).</summary>
+    public Result? NextCommitResult { get; set; }
+
     public Task<Result> CommitAsync(CancellationToken cancellationToken = default)
     {
         CommitCount++;
+        if (NextCommitResult is { } forced)
+        {
+            NextCommitResult = null;
+            return Task.FromResult(forced);
+        }
+
         repository.Commit();
         return Task.FromResult(Result.Success());
     }

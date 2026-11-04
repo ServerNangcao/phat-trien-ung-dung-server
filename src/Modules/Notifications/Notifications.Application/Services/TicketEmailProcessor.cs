@@ -51,9 +51,12 @@ public sealed class TicketEmailProcessor
         if (!isNew)
             return new PreparedTicketEmail(false, null);
 
-        var qrImage = string.IsNullOrWhiteSpace(notification.QrCodeUrl)
-            ? QrCodeImageGenerator.GenerateDataUri($"TICKET:{notification.TicketId}|ORDER:{notification.OrderId}")
-            : notification.QrCodeUrl;
+        // The inbound event is unauthenticated at the module boundary: only accept QR
+        // references that are plain http(s) URLs; anything else falls back to a locally
+        // generated QR, so a crafted event can never inject markup into the email HTML.
+        var qrImage = IsSafeQrReference(notification.QrCodeUrl)
+            ? notification.QrCodeUrl
+            : QrCodeImageGenerator.GenerateDataUri($"TICKET:{notification.TicketId}|ORDER:{notification.OrderId}");
 
         var template = BuildTicketEmailTemplate(notification);
         var record = EmailHistory.Create(
@@ -154,8 +157,19 @@ public sealed class TicketEmailProcessor
             .Replace("{{EventDate}}", HtmlEncode(notification.EventDate))
             .Replace("{{TicketType}}", HtmlEncode(notification.TicketType))
             .Replace("{{OrderId}}", notification.OrderId.ToString())
-            .Replace("{{QrCodeUrl}}", qrImage);
+            .Replace("{{QrCodeUrl}}", HtmlAttributeEncode(qrImage));
+    }
+
+    private static bool IsSafeQrReference(string url)
+    {
+        return !string.IsNullOrWhiteSpace(url)
+            && Uri.TryCreate(url, UriKind.Absolute, out var parsed)
+            && parsed.Scheme is "http" or "https";
     }
 
     private static string HtmlEncode(string value) => System.Net.WebUtility.HtmlEncode(value);
+
+    /// <summary>Encodes a value for use inside a single-quoted HTML attribute.</summary>
+    private static string HtmlAttributeEncode(string value)
+        => HtmlEncode(value).Replace("'", "&#39;");
 }

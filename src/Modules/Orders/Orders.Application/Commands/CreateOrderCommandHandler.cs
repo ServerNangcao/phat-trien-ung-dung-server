@@ -62,7 +62,17 @@ public sealed class CreateOrderCommandHandler : IRequestHandler<CreateOrderComma
             return Result<CreateOrderResult>.Failure(order.Error);
 
         await _orderRepository.AddAsync(order.Value, cancellationToken);
-        await _unitOfWork.CommitAsync(cancellationToken);
+        var commit = await _unitOfWork.CommitAsync(cancellationToken);
+        if (commit.IsFailure)
+        {
+            // A concurrent create on the same reservation won the unique index; return its
+            // order instead of surfacing the race as a 500.
+            var winner = await _orderRepository.GetByReservationIdAsync(reservation.ReservationId, cancellationToken);
+            if (winner is not null)
+                return Result<CreateOrderResult>.Success(new CreateOrderResult(winner.Id, winner.ReservationId, winner.TotalAmount));
+
+            return Result<CreateOrderResult>.Failure(commit.Error);
+        }
 
         return Result<CreateOrderResult>.Success(new CreateOrderResult(order.Value.Id, order.Value.ReservationId, order.Value.TotalAmount));
     }

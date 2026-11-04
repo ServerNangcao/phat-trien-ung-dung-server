@@ -11,7 +11,8 @@ public abstract class Entity
 
     public override bool Equals(object? obj)
     {
-        return obj is Entity other && Id == other.Id;
+        // Runtime-type check: an Order and a RefundRequest sharing a Guid are not equal.
+        return obj is Entity other && GetType() == other.GetType() && Id == other.Id;
     }
 
     public override int GetHashCode()

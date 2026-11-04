@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Ticketing.Modules.Notifications.Application.Services;
 using Ticketing.Modules.Notifications.Contracts.IntegrationEvents;
 using Ticketing.Modules.Notifications.Domain.Entities;
+using Ticketing.SharedKernel;
 using Ticketing.Tests.Notifications.TestSupport;
 
 namespace Ticketing.Tests.Notifications.Handlers;
@@ -60,6 +61,19 @@ public class TicketEmailProcessorTests
         first.IsNew.Should().BeTrue();
         second.IsNew.Should().BeFalse();
         second.Email.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Prepare_ConcurrentDuplicateLostUniqueRace_ReportsNotNew()
+    {
+        var (processor, repository, _, unitOfWork) = CreateProcessor();
+        unitOfWork.NextCommitResult = Result.Failure(Error.Conflict("A duplicate record was committed concurrently."));
+
+        var prepared = await processor.PrepareIncomingAsync(ValidEvent());
+
+        prepared.IsNew.Should().BeFalse();
+        prepared.Email.Should().BeNull();
+        repository.Store.Should().BeEmpty(); // the losing commit must not leak a Pending email
     }
 
     [Fact]

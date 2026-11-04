@@ -65,38 +65,47 @@ public sealed class SmtpEmailService : IEmailService
     {
         // Transient retry keeps a flaky connection inside the 30s email delivery budget:
         // worst case 3 attempts × 8s bound + 2s + 4s backoff ≈ 30s. Authentication
-        // failures are permanent and not retried.
+        // failures are permanent and not retried. A final-attempt timeout surfaces as
+        // TimeoutException so the caller records the failure (the Pending sweep is only
+        // the crash-recovery net).
         const int maxAttempts = 3;
 
-        for (var attempt = 1; ; attempt++)
+        try
         {
-            // Hard 8s bound per attempt so a hung SMTP endpoint cannot stall the pipeline.
-            using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            attemptCts.CancelAfter(TimeSpan.FromSeconds(8));
+            for (var attempt = 1; ; attempt++)
+            {
+                // Hard 8s bound per attempt so a hung SMTP endpoint cannot stall the pipeline.
+                using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attemptCts.CancelAfter(TimeSpan.FromSeconds(8));
 
-            try
-            {
-                using var client = new SmtpClient();
-                await client.ConnectAsync(
-                    _options.Host ?? "smtp.example.com",
-                    _options.Port,
-                    _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
-                    attemptCts.Token);
-                await client.AuthenticateAsync(_options.User ?? "", _options.Password ?? "", attemptCts.Token);
-                await client.SendAsync(message, attemptCts.Token);
-                await client.DisconnectAsync(true, attemptCts.Token);
-                return;
+                try
+                {
+                    using var client = new SmtpClient();
+                    await client.ConnectAsync(
+                        _options.Host ?? "smtp.example.com",
+                        _options.Port,
+                        _options.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None,
+                        attemptCts.Token);
+                    await client.AuthenticateAsync(_options.User ?? "", _options.Password ?? "", attemptCts.Token);
+                    await client.SendAsync(message, attemptCts.Token);
+                    await client.DisconnectAsync(true, attemptCts.Token);
+                    return;
+                }
+                catch (Exception ex) when (
+                    attempt < maxAttempts
+                    && !cancellationToken.IsCancellationRequested
+                    && ex is not MailKit.Security.AuthenticationException)
+                {
+                    // A per-attempt timeout surfaces as OperationCanceledException; the filter
+                    // above lets it retry as long as the caller itself has not cancelled.
+                    _logger.LogWarning(ex, "SMTP send attempt {Attempt}/{MaxAttempts} failed; retrying", attempt, maxAttempts);
+                    await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                }
             }
-            catch (Exception ex) when (
-                attempt < maxAttempts
-                && !cancellationToken.IsCancellationRequested
-                && ex is not MailKit.Security.AuthenticationException)
-            {
-                // A per-attempt timeout surfaces as OperationCanceledException; the filter
-                // above lets it retry as long as the caller itself has not cancelled.
-                _logger.LogWarning(ex, "SMTP send attempt {Attempt}/{MaxAttempts} failed; retrying", attempt, maxAttempts);
-                await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
-            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"SMTP send timed out after {maxAttempts} attempts.");
         }
     }
 }

@@ -141,7 +141,7 @@ public class OrderApiTests
     }
 
     [Fact]
-    public async Task Ipn_WithTamperedAmount_Returns400AndKeepsOrderPending()
+    public async Task Ipn_WithTamperedAmount_RespondsRspCode04AndKeepsOrderPending()
     {
         using var factory = new OrdersApiFactory();
         var client = factory.CreateClient();
@@ -157,14 +157,17 @@ public class OrderApiTests
 
         var ipn = await client.PostAsync($"/api/payments/vnpay/ipn?{VnPayTestHelper.BuildIpnQuery(orderId, total, tamperAmount: true)}", null);
 
-        ipn.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        // Permanent condition: VNPay's documented RspCode 04 (invalid amount) with HTTP 200
+        // stops the retry loop; the 400 previously caused endless retries.
+        ipn.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ipn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rspCode").GetString().Should().Be("04");
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
         (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Pending);
     }
 
     [Fact]
-    public async Task Ipn_WithInvalidSignature_Returns400()
+    public async Task Ipn_WithInvalidSignature_RespondsRspCode97()
     {
         using var factory = new OrdersApiFactory();
         var client = factory.CreateClient();
@@ -173,7 +176,34 @@ public class OrderApiTests
 
         var ipn = await client.PostAsync($"/api/payments/vnpay/ipn?{query}", null);
 
-        ipn.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        ipn.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ipn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rspCode").GetString().Should().Be("97");
+    }
+
+    [Fact]
+    public async Task Ipn_WithFailedTransactionStatus_DoesNotMarkPaid()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var created = await (await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerId = CustomerId,
+            reservationId = reservation.ReservationId
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var orderId = created.GetProperty("orderId").GetGuid();
+        var total = created.GetProperty("totalAmount").GetDecimal();
+
+        // ResponseCode 00 with a non-success TransactionStatus (e.g. suspected fraud) is
+        // NOT a completed payment: no state change, success ack so VNPay stops retrying.
+        var query = VnPayTestHelper.BuildIpnQuery(orderId, total, transactionStatus: "05");
+        var ipn = await client.PostAsync($"/api/payments/vnpay/ipn?{query}", null);
+
+        ipn.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Pending);
     }
 
     [Fact]
@@ -228,15 +258,51 @@ public class OrderApiTests
         requested.StatusCode.Should().Be(HttpStatusCode.OK);
         var refundId = (await requested.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("refundRequestId").GetGuid();
 
-        var processed = await client.PostAsJsonAsync($"/api/orders/refunds/{refundId}/process", new { approve = true });
+        var processed = await client.PostAsJsonAsync($"/api/orders/refunds/{refundId}/process", new { approve = true, adminNote = "Approved after verification" });
 
         processed.StatusCode.Should().Be(HttpStatusCode.OK);
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
         (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Refunded);
-        (await db.RefundRequests.FirstAsync(r => r.Id == refundId)).Status.Should().Be(RefundStatus.Processed);
+        var refund = await db.RefundRequests.FirstAsync(r => r.Id == refundId);
+        refund.Status.Should().Be(RefundStatus.Processed);
+        refund.ProcessedNote.Should().Be("Approved after verification"); // admin audit note persisted
         var outbox = await db.OutboxMessages.ToListAsync();
         outbox.Should().Contain(m => m.Type.Contains(nameof(RefundProcessedIntegrationEvent)));
+    }
+
+    [Fact]
+    public async Task RefundFlow_PaidAfterExpiry_AutoRefundApprovedByAdmin_CompletesRefund()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var created = await (await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerId = CustomerId,
+            reservationId = reservation.ReservationId
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var orderId = created.GetProperty("orderId").GetGuid();
+        factory.Ticketing.AddReservation(reservation with { IsActive = false });
+        await client.PostAsync($"/api/payments/vnpay/ipn?{VnPayTestHelper.BuildIpnQuery(orderId, created.GetProperty("totalAmount").GetDecimal())}", null);
+
+        Guid refundId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+            refundId = (await db.RefundRequests.AsNoTracking().SingleAsync(r => r.OrderId == orderId)).Id;
+        }
+
+        var processed = await client.PostAsJsonAsync($"/api/orders/refunds/{refundId}/process", new { approve = true, adminNote = "Late payment auto-refund" });
+
+        processed.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var freshScope = factory.Services.CreateScope())
+        {
+            var freshDb = freshScope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+            (await freshDb.Orders.AsNoTracking().FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Refunded);
+            (await freshDb.RefundRequests.AsNoTracking().FirstAsync(r => r.Id == refundId)).Status.Should().Be(RefundStatus.Processed);
+        }
     }
 
     [Fact]
