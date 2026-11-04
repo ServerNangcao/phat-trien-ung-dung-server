@@ -14,6 +14,9 @@ public sealed class FakeTicketingModuleApi : ITicketingModuleApi
 
     public int ReservationLookups { get; private set; }
 
+    /// <summary>When set, every lookup fails with a transient internal error (module outage).</summary>
+    public bool SimulateOutage { get; set; }
+
     public void AddReservation(ReservationDto reservation) => _reservations[reservation.ReservationId] = reservation;
 
     public void SetTickets(Guid eventId, IReadOnlyList<TicketDto> tickets) => _ticketsByEvent[eventId] = tickets;
@@ -23,11 +26,15 @@ public sealed class FakeTicketingModuleApi : ITicketingModuleApi
         _reservations.Clear();
         _ticketsByEvent.Clear();
         ReservationLookups = 0;
+        SimulateOutage = false;
     }
 
     public Task<Result<ReservationDto>> GetReservationAsync(Guid reservationId, CancellationToken cancellationToken = default)
     {
         ReservationLookups++;
+        if (SimulateOutage)
+            return Task.FromResult(Result<ReservationDto>.Failure(Error.Internal("Ticketing module unreachable: connection refused")));
+
         return Task.FromResult(_reservations.TryGetValue(reservationId, out var reservation)
             ? Result<ReservationDto>.Success(reservation)
             : Result<ReservationDto>.Failure(Error.NotFound("Reservation not found.")));

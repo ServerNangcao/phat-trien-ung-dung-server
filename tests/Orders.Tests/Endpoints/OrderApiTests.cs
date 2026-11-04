@@ -221,9 +221,9 @@ public class OrderApiTests
         var orderId = created.GetProperty("orderId").GetGuid();
         var total = created.GetProperty("totalAmount").GetDecimal();
 
-        // The reservation disappears (module down): the handler must not guess between
-        // Paid and PaidAfterExpiry. RspCode 99 tells VNPay to retry the IPN later.
-        factory.Ticketing.Reset();
+        // The Ticketing module is down (transient outage): the handler must not guess
+        // between Paid and PaidAfterExpiry. RspCode 99 tells VNPay to retry the IPN later.
+        factory.Ticketing.SimulateOutage = true;
 
         var ipn = await client.PostAsync($"/api/payments/vnpay/ipn?{VnPayTestHelper.BuildIpnQuery(orderId, total)}", null);
 
