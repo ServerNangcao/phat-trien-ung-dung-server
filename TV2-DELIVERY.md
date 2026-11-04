@@ -90,8 +90,34 @@ Postgres tests skip when Docker is absent and run in CI with Docker).
   ships the backing APIs (FR-13, FR-22, admin refunds).
 - Real VNPay sandbox credentials (TmnCode/HashSecret) must be configured in appsettings
   or environment before pointing at the real gateway; placeholders ship by default.
+  Missing config now fails startup (validated in VnPayPaymentService).
 - The Ticketing HTTP routes in `HttpTicketingModuleApi` are a consumer-driven contract;
   when TV4 ships Tickets.Contracts, the adapter is the only file that may need mapping.
 - TV1's central outbox worker (FOR UPDATE SKIP LOCKED) is not part of this delivery;
-  the module-local delivery service covers local development and the table/format are
-  ready for the central worker.
+  the module-local delivery service covers local development (enable only one of them)
+  and the table/format are ready for the central worker.
+- The ticket email has no invoice/price section yet: `TicketIssuedIntegrationEvent`
+  carries no pricing fields. Contract extension request for TV4: add `UnitPrice` (or an
+  `Items` collection) to the event, then extend `TicketEmailProcessor.BuildTicketEmailTemplate`.
+- `SmtpEmailService` (the MailKit adapter) is exercised only through the `IEmailService`
+  boundary in tests; a fake-SMTP-server test would be needed to drive the real adapter.
+
+## Authorization contract for TV1's host (JWT middleware + RBAC)
+
+The modules ship no auth of their own — per the assignment, TV1's Identity module and
+host middleware enforce JWT + roles. When wiring the modules into the host, apply:
+
+| Endpoint | Required policy |
+| --- | --- |
+| `POST /api/orders` | Authenticated Customer (order CustomerId must match the token subject) |
+| `GET /api/orders/customer/{customerId}` | Authenticated Customer, subject == customerId (blocks IDOR) |
+| `GET /api/orders/{id}` | Authenticated Customer owning the order, or Staff/Admin |
+| `POST /api/orders/{id}/refund` | Authenticated Customer owning the order |
+| `GET /api/orders/refunds` | Admin |
+| `POST /api/orders/refunds/{id}/process` | Admin |
+| `GET /api/orders/events/{eventId}/attendees` | Organizer owning the event, or Staff |
+| `POST /api/payments/vnpay/ipn` | Anonymous by design (gateway callback; HMAC signature is the auth) |
+| `GET /api/payments/vnpay/return` | Anonymous by design (browser redirect; signature verified) |
+| `POST /api/notifications/send` | Internal service only (service token / network-restricted) |
+| `POST /api/integration-events/ticket-issued` | Internal modules only (service token; Inbox dedupes by EventId) |
+| `GET /api/notifications/order/{orderId}` | Authenticated Customer owning the order, or Admin |

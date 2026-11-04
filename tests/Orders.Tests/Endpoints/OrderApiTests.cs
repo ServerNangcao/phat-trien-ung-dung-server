@@ -207,6 +207,34 @@ public class OrderApiTests
     }
 
     [Fact]
+    public async Task Ipn_WhenTicketingUnreachable_RespondsRspCode99ForRetry()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var created = await (await client.PostAsJsonAsync("/api/orders", new
+        {
+            customerId = CustomerId,
+            reservationId = reservation.ReservationId
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        var orderId = created.GetProperty("orderId").GetGuid();
+        var total = created.GetProperty("totalAmount").GetDecimal();
+
+        // The reservation disappears (module down): the handler must not guess between
+        // Paid and PaidAfterExpiry. RspCode 99 tells VNPay to retry the IPN later.
+        factory.Ticketing.Reset();
+
+        var ipn = await client.PostAsync($"/api/payments/vnpay/ipn?{VnPayTestHelper.BuildIpnQuery(orderId, total)}", null);
+
+        ipn.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ipn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("rspCode").GetString().Should().Be("99");
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Pending);
+    }
+
+    [Fact]
     public async Task Ipn_AfterReservationExpired_MarksPaidAfterExpiryWithAutoRefund()
     {
         using var factory = new OrdersApiFactory();
