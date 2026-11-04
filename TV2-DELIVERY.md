@@ -57,8 +57,10 @@ Postgres tests skip when Docker is absent and run in CI with Docker).
    (Pending sweep) instead of losing the email. A redelivered event is answered with
    `{duplicated: true}` and never sends twice.
 2. `TicketEmailProcessor` owns the single send lifecycle: renders the HTML template
-   (event fields HTML-encoded), embeds the QR (`QrCodeUrl` from Ticketing, or a locally
-   generated data-URI fallback via QRCoder), and marks Sent / Failed + backoff.
+   (event fields HTML-encoded), includes an invoice table when the event carries
+   pricing (`TotalAmount` + `Items`; omitted for older payloads), embeds the QR
+   (`QrCodeUrl` from Ticketing, or a locally generated data-URI fallback via QRCoder),
+   and marks Sent / Failed + backoff.
 3. Delivery budget < 30s: `SmtpEmailService` retries transient failures 3× (2s/4s
    backoff, 8s hard bound per attempt — worst case ≈ 30s); `EmailRetryProcessor`
    (10s worker) retries failed sends at 10s..60s backoff up to 5 attempts and recovers
@@ -96,11 +98,9 @@ Postgres tests skip when Docker is absent and run in CI with Docker).
 - TV1's central outbox worker (FOR UPDATE SKIP LOCKED) is not part of this delivery;
   the module-local delivery service covers local development (enable only one of them)
   and the table/format are ready for the central worker.
-- The ticket email has no invoice/price section yet: `TicketIssuedIntegrationEvent`
-  carries no pricing fields. Contract extension request for TV4: add `UnitPrice` (or an
-  `Items` collection) to the event, then extend `TicketEmailProcessor.BuildTicketEmailTemplate`.
-- `SmtpEmailService` (the MailKit adapter) is exercised only through the `IEmailService`
-  boundary in tests; a fake-SMTP-server test would be needed to drive the real adapter.
+- `TicketIssuedIntegrationEvent` now carries `TotalAmount` and `Items` for the email
+  invoice. Request to TV4: populate these fields when publishing TicketIssued; older
+  payloads without pricing still render (the invoice section is simply omitted).
 
 ## Authorization contract for TV1's host (JWT middleware + RBAC)
 
