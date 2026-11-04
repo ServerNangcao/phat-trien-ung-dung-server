@@ -1,0 +1,59 @@
+using MediatR;
+using Ticketing.Modules.Orders.Application.Data;
+using Ticketing.Modules.Orders.Application.Repositories;
+using Ticketing.Modules.Orders.Domain.Entities;
+using Ticketing.SharedKernel;
+
+namespace Ticketing.Modules.Orders.Application.Commands;
+
+/// <summary>
+/// Admin approves or rejects a refund request.
+/// </summary>
+public sealed record ProcessRefundCommand(Guid RefundRequestId, bool Approve, string? AdminNote = null) : IRequest<Result<Guid>>;
+
+public sealed class ProcessRefundCommandHandler : IRequestHandler<ProcessRefundCommand, Result<Guid>>
+{
+    private readonly IOrderRepository _orderRepository;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
+
+    public ProcessRefundCommandHandler(IOrderRepository orderRepository, IUnitOfWork unitOfWork, IClock clock)
+    {
+        _orderRepository = orderRepository;
+        _unitOfWork = unitOfWork;
+        _clock = clock;
+    }
+
+    public async Task<Result<Guid>> Handle(ProcessRefundCommand request, CancellationToken cancellationToken)
+    {
+        var refund = await _orderRepository.GetRefundRequestByIdAsync(request.RefundRequestId, cancellationToken);
+        if (refund is null)
+            return Result<Guid>.Failure(Error.NotFound($"Refund request {request.RefundRequestId} not found."));
+
+        if (refund.Status != RefundStatus.Pending)
+            return Result<Guid>.Failure(Error.Validation($"Refund request {refund.Id} is not pending."));
+
+        var order = await _orderRepository.GetByIdAsync(refund.OrderId, cancellationToken);
+        if (order is null)
+            return Result<Guid>.Failure(Error.NotFound($"Order {refund.OrderId} not found."));
+
+        var now = _clock.UtcNow;
+
+        if (request.Approve)
+        {
+            if (order.Status != OrderStatus.Paid)
+                return Result<Guid>.Failure(Error.Validation("Cannot approve refund: order is not paid."));
+
+            order.MarkAsRefunded(now);
+            refund.MarkAsProcessed(now);
+        }
+        else
+        {
+            order.MarkRefundRejected(now);
+            refund.MarkAsRejected(now);
+        }
+
+        await _unitOfWork.CommitAsync(cancellationToken);
+        return Result<Guid>.Success(refund.Id);
+    }
+}

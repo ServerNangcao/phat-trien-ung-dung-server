@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Ticketing.Modules.Orders.Api.Endpoints;
+using Ticketing.Modules.Orders.Api.OutboxDelivery;
 using Ticketing.Modules.Orders.Infrastructure;
 
 namespace Ticketing.Modules.Orders.Api;
@@ -20,6 +21,12 @@ public class Program
             builder.Services.AddDbContext<OrdersDbContext>(options => options.UseInMemoryDatabase("Ticketing.Orders"));
         }
 
+        // Local outbox delivery (TV1's central worker takes over in production).
+        if (builder.Configuration.GetValue("IntegrationDelivery:Enabled", true))
+        {
+            builder.Services.AddHostedService<OutboxDeliveryService>();
+        }
+
         var app = builder.Build();
 
         app.MapGet("/health", () => Results.Ok(new { Status = "Healthy", Module = "Orders" }));
@@ -29,3 +36,4 @@ public class Program
         await app.RunAsync();
     }
 }
+

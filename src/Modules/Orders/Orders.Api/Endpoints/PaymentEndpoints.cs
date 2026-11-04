@@ -2,9 +2,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Logging;
+using MediatR;
+using Ticketing.Modules.Orders.Application.Commands;
 using Ticketing.Modules.Orders.Application.Repositories;
-using Ticketing.Modules.Orders.Domain.Entities;
 using Ticketing.Modules.Orders.Infrastructure.Payment;
 
 namespace Ticketing.Modules.Orders.Api.Endpoints;
@@ -15,12 +15,13 @@ public static class PaymentEndpoints
     {
         var group = app.MapGroup("/api/payments");
 
-        // VNPay IPN callback (server-to-server, no browser redirect)
+        // VNPay IPN callback (server-to-server, no browser redirect).
+        // VNPay retries this endpoint until it receives a 200, so every path below either
+        // commits state idempotently or acks without changing state.
         group.MapPost("/vnpay/ipn", async (
             HttpContext context,
             [FromServices] VnPayPaymentService vnPayService,
-            [FromServices] IOrderRepository orderRepository,
-            [FromServices] ILogger logger) =>
+            [FromServices] ISender sender) =>
         {
             var query = context.Request.Query
                 .ToDictionary(kvp => kvp.Key, kvp => (string?)kvp.Value.ToString());
@@ -30,32 +31,32 @@ public static class PaymentEndpoints
 
             if (!isValid)
             {
-                logger.LogWarning("VNPay IPN signature verification failed for order {OrderId}", callback.TransactionId);
                 return Results.BadRequest(new { RspCode = "99", Message = "Invalid signature" });
             }
 
-            var order = await orderRepository.GetByIdAsync(callback.TransactionId);
-            if (order is null)
+            // ResponseCode other than "00" means the payment failed at the gateway;
+            // ack receipt so VNPay stops retrying and leave the order Pending for a retry.
+            if (callback.ResponseCode != "00")
             {
-                logger.LogWarning("VNPay IPN referenced unknown order {OrderId}", callback.TransactionId);
-                return Results.BadRequest(new { RspCode = "99", Message = "Order not found" });
+                return Results.Ok(new { RspCode = "00", Message = "Payment not successful; no state change" });
             }
 
-            // Idempotency: if already paid, respond success without re-processing
-            if (order.Status == OrderStatus.Paid)
+            var result = await sender.Send(new HandleVnPayIpnCommand(callback.TransactionId, callback.Amount));
+
+            if (result.IsFailure)
             {
-                return Results.Ok(new { RspCode = "00", Message = "Already confirmed" });
+                return Results.BadRequest(new { RspCode = "99", Message = result.Error.Message });
             }
 
-            logger.LogInformation("VNPay IPN confirmed payment for order {OrderId}, status {Status}", callback.TransactionId, callback.TransactionStatus);
-            return Results.Ok(new { RspCode = "00", Message = "Success" });
+            return Results.Ok(new { RspCode = "00", Message = "Success", OrderId = result.Value.OrderId });
         })
         .WithName("VnPayIpn");
 
         // VNPay return URL (browser redirect after payment)
         group.MapGet("/vnpay/return", async (
             HttpContext context,
-            [FromServices] VnPayPaymentService vnPayService) =>
+            [FromServices] VnPayPaymentService vnPayService,
+            [FromServices] IOrderRepository orderRepository) =>
         {
             var query = context.Request.Query
                 .ToDictionary(kvp => kvp.Key, kvp => (string?)kvp.Value.ToString());
@@ -63,8 +64,10 @@ public static class PaymentEndpoints
             var callback = vnPayService.ParseCallback(query);
             var isValid = vnPayService.VerifyCallbackSignature(query, callback.SecureHash);
 
-            var redirectUrl = isValid
-                ? $"/payment/result?orderId={callback.TransactionId}&status={callback.TransactionStatus}"
+            var order = await orderRepository.GetByIdAsync(callback.TransactionId);
+
+            var redirectUrl = isValid && order is not null
+                ? $"/payment/result?orderId={callback.TransactionId}&status={order.Status}"
                 : $"/payment/result?orderId={callback.TransactionId}&status=invalid";
 
             return Results.Redirect(redirectUrl);

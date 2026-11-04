@@ -24,8 +24,10 @@ public sealed class OutboxRepository : IOutbox
 
     public async Task<IReadOnlyList<OutboxMessage>> GetUnprocessedAsync(int batchSize, CancellationToken cancellationToken = default)
     {
+        // Rows past the retry ceiling are dead-lettered: they stay visible in the table
+        // for operator inspection but no longer block the delivery pipeline.
         return await _dbContext.Set<OutboxMessage>()
-            .Where(m => m.ProcessedAt == null)
+            .Where(m => m.ProcessedAt == null && m.RetryCount < 5)
             .OrderBy(m => m.CreatedAt)
             .Take(batchSize)
             .ToListAsync(cancellationToken);
