@@ -17,7 +17,6 @@ public sealed class EmailRepository : IEmailRepository
     public async Task AddAsync(EmailHistory email, CancellationToken cancellationToken = default)
     {
         await _dbContext.EmailHistories.AddAsync(email, cancellationToken);
-        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<EmailHistory?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -41,11 +40,12 @@ public sealed class EmailRepository : IEmailRepository
         if (_dbContext.Entry(email).State == EntityState.Detached)
             _dbContext.EmailHistories.Update(email);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await Task.CompletedTask;
     }
 
     public async Task<IReadOnlyList<EmailHistory>> GetRetryableAsync(DateTime now, int limit, CancellationToken cancellationToken = default)
     {
+        // Tracked on purpose: callers mutate the entities and commit through the unit of work.
         var entities = await _dbContext.EmailHistories
             .Where(e => (e.Status == EmailStatus.Failed
                             && e.RetryCount < EmailRetryProcessor.MaxRetries

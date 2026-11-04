@@ -49,7 +49,7 @@ public class CreateOrderCommandHandlerTests
         var result = await handler.Handle(new CreateOrderCommand(CustomerId, reservation.ReservationId), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        var order = await db.Orders.Include(o => o.Items).SingleAsync(o => o.Id == result.Value);
+        var order = await db.Orders.Include(o => o.Items).SingleAsync(o => o.Id == result.Value.OrderId);
         order.TotalAmount.Should().Be(300_000m); // 2 × 125,000 + 1 × 50,000 — from the reservation, not the client
         order.ReservationId.Should().Be(reservation.ReservationId);
         order.Status.Should().Be(Ticketing.Modules.Orders.Domain.Entities.OrderStatus.Pending);
@@ -67,7 +67,7 @@ public class CreateOrderCommandHandlerTests
         var first = await handler.Handle(new CreateOrderCommand(CustomerId, reservation.ReservationId), CancellationToken.None);
         var second = await handler.Handle(new CreateOrderCommand(CustomerId, reservation.ReservationId), CancellationToken.None);
 
-        first.Value.Should().Be(second.Value);
+        first.Value.OrderId.Should().Be(second.Value.OrderId);
         db.Orders.Count(o => o.ReservationId == reservation.ReservationId).Should().Be(1);
     }
 

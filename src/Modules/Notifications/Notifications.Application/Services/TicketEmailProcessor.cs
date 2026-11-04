@@ -1,68 +1,95 @@
-using MediatR;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Ticketing.Modules.Notifications.Application.Data;
 using Ticketing.Modules.Notifications.Application.Repositories;
-using Ticketing.Modules.Notifications.Application.Services;
 using Ticketing.Modules.Notifications.Contracts.IntegrationEvents;
 using Ticketing.Modules.Notifications.Domain.Entities;
 using Ticketing.Modules.Notifications.Domain.ValueObjects;
 using Ticketing.SharedKernel;
 
-namespace Ticketing.Modules.Notifications.Application.Handlers;
+namespace Ticketing.Modules.Notifications.Application.Services;
+
+public sealed record PreparedTicketEmail(bool IsNew, EmailHistory? Email);
 
 /// <summary>
-/// Sends the ticket email (with embedded QR code) when a TicketIssued event arrives.
-/// Inbox dedupe happens in the delivery endpoint before this handler runs, so each
-/// event sends at most one email.
+/// Ticket-email lifecycle. PrepareIncomingAsync records the inbox row and the Pending
+/// email history in one commit, so a crash after the 202 ack is recovered by the retry
+/// worker's Pending sweep and no accepted event can lose its email. DeliverAsync is the
+/// single send lifecycle (send → Sent, or Failed + backoff) reused by first delivery
+/// and by the retry worker.
 /// </summary>
-public sealed class TicketIssuedHandler : INotificationHandler<TicketIssuedIntegrationEvent>
+public sealed class TicketEmailProcessor
 {
+    private readonly IInbox _inbox;
     private readonly IEmailRepository _emailRepository;
     private readonly IEmailService _emailService;
+    private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
-    private readonly ILogger<TicketIssuedHandler> _logger;
+    private readonly ILogger<TicketEmailProcessor> _logger;
 
-    public TicketIssuedHandler(IEmailRepository emailRepository, IEmailService emailService,
-        IClock clock, ILogger<TicketIssuedHandler> logger)
+    public TicketEmailProcessor(IInbox inbox, IEmailRepository emailRepository, IEmailService emailService,
+        IUnitOfWork unitOfWork, IClock clock, ILogger<TicketEmailProcessor> logger)
     {
+        _inbox = inbox;
         _emailRepository = emailRepository;
         _emailService = emailService;
+        _unitOfWork = unitOfWork;
         _clock = clock;
         _logger = logger;
     }
 
-    public async Task Handle(TicketIssuedIntegrationEvent notification, CancellationToken cancellationToken)
+    /// <summary>
+    /// Atomically records inbox + Pending email history. Returns IsNew=false for a
+    /// redelivered event. Email is null when the event was consumed but carries no
+    /// sendable payload (invalid recipient data).
+    /// </summary>
+    public async Task<PreparedTicketEmail> PrepareIncomingAsync(TicketIssuedIntegrationEvent notification,
+        CancellationToken cancellationToken = default)
     {
-        // Fall back to a locally generated QR when Ticketing did not supply one, so the
-        // email always carries a scannable code.
+        var payload = JsonSerializer.Serialize(notification);
+        var isNew = await _inbox.TryStageAsync(notification.EventId, "TicketIssued", payload, cancellationToken);
+        if (!isNew)
+            return new PreparedTicketEmail(false, null);
+
         var qrImage = string.IsNullOrWhiteSpace(notification.QrCodeUrl)
             ? QrCodeImageGenerator.GenerateDataUri($"TICKET:{notification.TicketId}|ORDER:{notification.OrderId}")
             : notification.QrCodeUrl;
 
         var template = BuildTicketEmailTemplate(notification);
-        var body = RenderBody(template.BodyTemplate, notification, qrImage);
-
         var record = EmailHistory.Create(
             notification.OrderId,
             notification.CustomerEmail,
             $"Your ticket for {notification.EventName}",
-            body,
+            RenderBody(template.BodyTemplate, notification, qrImage),
             _clock.UtcNow);
 
         if (record.IsFailure)
         {
-            _logger.LogError("Failed to create email history record: {Error}", record.Error.Message);
-            return;
+            // Invalid payload: the event is consumed (inbox row commits) but nothing is sendable.
+            _logger.LogError("Rejected TicketIssued event {EventId}: {Error}", notification.EventId, record.Error.Message);
+            await _unitOfWork.CommitAsync(cancellationToken);
+            return new PreparedTicketEmail(true, null);
         }
 
-        var email = record.Value;
-        await _emailRepository.AddAsync(email, cancellationToken);
+        await _emailRepository.AddAsync(record.Value, cancellationToken);
 
+        var commit = await _unitOfWork.CommitAsync(cancellationToken);
+        if (commit.IsFailure)
+            return new PreparedTicketEmail(false, null); // concurrent duplicate lost the unique-index race
+
+        return new PreparedTicketEmail(true, record.Value);
+    }
+
+    /// <summary>
+    /// The single send lifecycle: attempt the send, record Sent or Failed (+backoff), commit.
+    /// </summary>
+    public async Task DeliverAsync(EmailHistory email, CancellationToken cancellationToken = default)
+    {
         try
         {
-            await _emailService.SendAsync(email.To, template.SubjectTemplate, email.Body, true, cancellationToken);
+            await _emailService.SendAsync(email.To, email.Subject, email.Body, true, cancellationToken);
             email.MarkSent(_clock.UtcNow);
-            await _emailRepository.UpdateAsync(email, cancellationToken);
-            _logger.LogInformation("Ticket email sent to {Email} for order {OrderId}", email.To, notification.OrderId);
+            _logger.LogInformation("Email {EmailId} sent to {Email} for order {OrderId}", email.Id, email.To, email.OrderId);
         }
         catch (OperationCanceledException)
         {
@@ -71,11 +98,14 @@ public sealed class TicketIssuedHandler : INotificationHandler<TicketIssuedInteg
         catch (Exception ex)
         {
             email.MarkFailed(ex.Message);
-            email.ScheduleRetry(_clock.UtcNow.AddSeconds(10));
-            await _emailRepository.UpdateAsync(email, cancellationToken);
-            _logger.LogError(ex, "Failed to send ticket email to {Email} for order {OrderId}; scheduled for retry",
-                email.To, notification.OrderId);
+            // Linear backoff (10s, 20s, ...) keeps early retries inside the 30s window.
+            email.ScheduleRetry(_clock.UtcNow.AddSeconds(Math.Min(10 * email.RetryCount, 60)));
+            _logger.LogWarning(ex, "Email {EmailId} to {Email} failed (attempt {RetryCount}); retry scheduled",
+                email.Id, email.To, email.RetryCount);
         }
+
+        await _emailRepository.UpdateAsync(email, cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
     }
 
     private static EmailTemplate BuildTicketEmailTemplate(TicketIssuedIntegrationEvent notification)

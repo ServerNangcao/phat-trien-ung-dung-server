@@ -38,7 +38,8 @@ public class ModuleBoundaryTests
             .ShouldNot()
             .HaveDependencyOnAny(
                 "Ticketing.Modules.Orders.Infrastructure",
-                "Ticketing.Modules.Orders.Api")
+                "Ticketing.Modules.Orders.Api",
+                "Ticketing.Infrastructure.Core")
             .GetResult();
 
         result.IsSuccessful.Should().BeTrue(

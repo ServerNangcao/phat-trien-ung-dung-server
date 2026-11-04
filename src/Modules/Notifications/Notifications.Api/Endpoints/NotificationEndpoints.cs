@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
-using MediatR;
+using Ticketing.Modules.Notifications.Application.Data;
 using Ticketing.Modules.Notifications.Application.Repositories;
 using Ticketing.Modules.Notifications.Application.Services;
 using Ticketing.Modules.Notifications.Contracts;
@@ -17,11 +17,13 @@ public static class NotificationEndpoints
     {
         var group = app.MapGroup("/api/notifications");
 
-        // Send a transactional email (admin/internal services)
+        // Send a transactional email (admin/internal services). Same lifecycle as the
+        // ticket emails: record → send → mark → commit, with retry scheduling on failure.
         group.MapPost("/send", async (
             [FromBody] SendEmailRequest request,
             [FromServices] IEmailRepository emailRepository,
             [FromServices] IEmailService emailService,
+            [FromServices] IUnitOfWork unitOfWork,
             [FromServices] IClock clock) =>
         {
             var record = EmailHistory.Create(request.OrderId, request.To, request.Subject, request.Body, clock.UtcNow);
@@ -43,6 +45,7 @@ public static class NotificationEndpoints
             }
 
             await emailRepository.UpdateAsync(email);
+            await unitOfWork.CommitAsync();
 
             return Results.Ok(new { EmailId = email.Id, Status = email.Status.ToString() });
         })

@@ -50,6 +50,7 @@ public sealed class OutboxRepository : IOutbox
         {
             message.Error = error;
             message.RetryCount++;
+            message.LastAttemptAt = DateTime.UtcNow;
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
     }

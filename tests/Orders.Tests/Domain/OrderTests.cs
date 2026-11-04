@@ -49,6 +49,15 @@ public class OrderTests
     }
 
     [Fact]
+    public void Create_WithTotalMismatchingItems_Fails()
+    {
+        var result = Order.Create(CustomerId, ReservationId, 999_999m, Items(), Now);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Message.Should().Contain("does not match the sum of item subtotals");
+    }
+
+    [Fact]
     public void MarkAsPaid_FromPending_SetsStatusAndRaisesEvent()
     {
         var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;

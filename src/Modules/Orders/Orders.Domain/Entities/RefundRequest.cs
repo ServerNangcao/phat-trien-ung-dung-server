@@ -62,21 +62,27 @@ public sealed class RefundRequest : Entity
     }
 
     /// <summary>
-    /// Mark this refund request as processed.
+    /// Mark this refund request as processed. Valid only from Pending.
     /// </summary>
     /// <param name="now">The current UTC timestamp.</param>
     public void MarkAsProcessed(DateTime now)
     {
+        if (Status != RefundStatus.Pending)
+            throw new InvalidOperationException($"Refund request {Id} cannot transition from {Status} to Processed.");
+
         ProcessedAt = now;
         Status = RefundStatus.Processed;
     }
 
     /// <summary>
-    /// Mark this refund request as rejected.
+    /// Mark this refund request as rejected. Valid only from Pending.
     /// </summary>
     /// <param name="now">The current UTC timestamp.</param>
     public void MarkAsRejected(DateTime now)
     {
+        if (Status != RefundStatus.Pending)
+            throw new InvalidOperationException($"Refund request {Id} cannot transition from {Status} to Rejected.");
+
         ProcessedAt = now;
         Status = RefundStatus.Rejected;
     }

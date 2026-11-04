@@ -23,7 +23,6 @@ public static class OrderEndpoints
             [FromBody] CreateOrderRequest request,
             HttpContext context,
             [FromServices] ISender sender,
-            [FromServices] IOrderRepository orderRepository,
             [FromServices] VnPayPaymentService vnPayPaymentService) =>
         {
             var result = await sender.Send(new CreateOrderCommand(request.CustomerId, request.ReservationId));
@@ -31,20 +30,17 @@ public static class OrderEndpoints
             if (result.IsFailure)
                 return Results.BadRequest(new { result.Error.Code, result.Error.Message });
 
-            var order = await orderRepository.GetByIdAsync(result.Value);
-            if (order is null)
-                return Results.BadRequest(new { Code = "OrderNotFound", Message = "Created order could not be loaded." });
-
+            var order = result.Value;
             var ipAddress = context.Connection.RemoteIpAddress?.ToString();
             var paymentUrl = vnPayPaymentService.GeneratePaymentUrl(
-                order.Id, order.TotalAmount, $"Ticketing order {order.Id}", ipAddress);
+                order.OrderId, order.TotalAmount, $"Ticketing order {order.OrderId}", ipAddress);
 
             return Results.Ok(new
             {
-                OrderId = order.Id,
+                OrderId = order.OrderId,
                 ReservationId = order.ReservationId,
                 TotalAmount = order.TotalAmount,
-                Status = order.Status.ToString(),
+                Status = OrderStatus.Pending.ToString(),
                 PaymentUrl = paymentUrl
             });
         })

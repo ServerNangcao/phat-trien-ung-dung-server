@@ -7,9 +7,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Orders.Domain\Orders.Domain.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.SharedKernel\Ticketing.SharedKernel.csproj" />
-    <PackageReference Include="FluentValidation" />
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
     <PackageReference Include="MediatR" />
-    <PackageReference Include="MediatR.Contracts" />
   </ItemGroup>
 </Project>

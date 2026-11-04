@@ -7,4 +7,6 @@ namespace Ticketing.Modules.Orders.Application.Commands;
 /// Creates an order from an active ticket reservation. Prices and quantities come from the
 /// Ticketing module via the reservation, never from the client.
 /// </summary>
-public sealed record CreateOrderCommand(Guid CustomerId, Guid ReservationId) : IRequest<Result<Guid>>;
+public sealed record CreateOrderCommand(Guid CustomerId, Guid ReservationId) : IRequest<Result<CreateOrderResult>>;
+
+public sealed record CreateOrderResult(Guid OrderId, Guid ReservationId, decimal TotalAmount);

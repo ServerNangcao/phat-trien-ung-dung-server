@@ -47,6 +47,10 @@ public sealed class OrdersDbContext : BaseDbContext
 
             builder.HasIndex(o => o.CustomerId);
             builder.HasIndex(o => o.ReservationId).IsUnique();
+
+            // Postgres xmin as a concurrency token: two concurrent IPNs for the same order
+            // cannot both pass the Pending check and commit; the loser retries via VNPay.
+            builder.Property<uint>("xmin").IsRowVersion();
         });
 
         modelBuilder.Entity<RefundRequest>(builder =>
@@ -73,6 +77,7 @@ public sealed class OrdersDbContext : BaseDbContext
             builder.Property(m => m.Content).IsRequired();
             builder.Property(m => m.CreatedAt).IsRequired();
             builder.HasIndex(m => m.ProcessedAt);
+            builder.Property(m => m.LastAttemptAt);
         });
     }
 

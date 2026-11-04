@@ -1,6 +1,6 @@
 using FluentAssertions;
 using NetArchTest.Rules;
-using Ticketing.Modules.Notifications.Application.Handlers;
+using Ticketing.Modules.Notifications.Application.Services;
 using Ticketing.Modules.Notifications.Contracts;
 using Ticketing.Modules.Notifications.Domain.Entities;
 using Ticketing.Modules.Notifications.Infrastructure;
@@ -33,11 +33,13 @@ public class ModuleBoundaryTests
     [Fact]
     public void NotificationsApplication_DoesNotDependOnInfrastructureOrApi()
     {
-        var result = Types.InAssembly(typeof(TicketIssuedHandler).Assembly)
+        var result = Types.InAssembly(typeof(TicketEmailProcessor).Assembly)
             .ShouldNot()
             .HaveDependencyOnAny(
                 "Ticketing.Modules.Notifications.Infrastructure",
-                "Ticketing.Modules.Notifications.Api")
+                "Ticketing.Modules.Notifications.Api",
+                "Ticketing.Infrastructure.Core",
+                "MailKit")
             .GetResult();
 
         result.IsSuccessful.Should().BeTrue(

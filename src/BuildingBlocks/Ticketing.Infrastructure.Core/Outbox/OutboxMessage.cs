@@ -9,4 +9,5 @@ public record OutboxMessage
     public DateTime? ProcessedAt { get; set; }
     public int RetryCount { get; set; }
     public string? Error { get; set; }
+    public DateTime? LastAttemptAt { get; set; }
 }

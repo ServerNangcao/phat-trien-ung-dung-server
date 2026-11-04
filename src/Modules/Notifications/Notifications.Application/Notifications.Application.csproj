@@ -8,11 +8,6 @@
     <ProjectReference Include="..\Notifications.Domain\Notifications.Domain.csproj" />
     <ProjectReference Include="..\Notifications.Contracts\Notifications.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.SharedKernel\Ticketing.SharedKernel.csproj" />
-    <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.Infrastructure.Core\Ticketing.Infrastructure.Core.csproj" />
-    <PackageReference Include="FluentValidation" />
-    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
-    <PackageReference Include="MediatR" />
-    <PackageReference Include="MediatR.Contracts" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="QRCoder" />
   </ItemGroup>

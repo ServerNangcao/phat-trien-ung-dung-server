@@ -26,13 +26,11 @@ public sealed class SmtpOptions
 public sealed class SmtpEmailService : IEmailService
 {
     private readonly SmtpOptions _options;
-    private readonly IClock _clock;
     private readonly ILogger<SmtpEmailService> _logger;
 
-    public SmtpEmailService(IOptions<SmtpOptions> options, IClock clock, ILogger<SmtpEmailService> logger)
+    public SmtpEmailService(IOptions<SmtpOptions> options, ILogger<SmtpEmailService> logger)
     {
         _options = options.Value;
-        _clock = clock;
         _logger = logger;
     }
 
@@ -65,15 +63,16 @@ public sealed class SmtpEmailService : IEmailService
 
     private async Task SendAsyncInternal(MimeMessage message, CancellationToken cancellationToken)
     {
-        // Transient retry (3s, 6s backoff) keeps a flaky connection inside the 30s email
-        // delivery budget; authentication failures are permanent and not retried.
+        // Transient retry keeps a flaky connection inside the 30s email delivery budget:
+        // worst case 3 attempts × 8s bound + 2s + 4s backoff ≈ 30s. Authentication
+        // failures are permanent and not retried.
         const int maxAttempts = 3;
 
         for (var attempt = 1; ; attempt++)
         {
-            // Hard 10s bound per attempt so a hung SMTP endpoint cannot stall the pipeline.
+            // Hard 8s bound per attempt so a hung SMTP endpoint cannot stall the pipeline.
             using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            attemptCts.CancelAfter(TimeSpan.FromSeconds(10));
+            attemptCts.CancelAfter(TimeSpan.FromSeconds(8));
 
             try
             {
@@ -96,7 +95,7 @@ public sealed class SmtpEmailService : IEmailService
                 // A per-attempt timeout surfaces as OperationCanceledException; the filter
                 // above lets it retry as long as the caller itself has not cancelled.
                 _logger.LogWarning(ex, "SMTP send attempt {Attempt}/{MaxAttempts} failed; retrying", attempt, maxAttempts);
-                await Task.Delay(TimeSpan.FromSeconds(attempt * 3), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
             }
         }
     }

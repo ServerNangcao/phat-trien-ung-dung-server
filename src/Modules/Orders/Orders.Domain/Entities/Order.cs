@@ -49,9 +49,10 @@ public sealed class Order : Entity
     /// <summary>
     /// Pending domain events raised by this aggregate. Cleared after each save.
     /// </summary>
-    public List<IDomainEvent> DomainEvents { get; private set; } = new();
+    public IReadOnlyList<IDomainEvent> DomainEvents => _domainEvents;
 
     private readonly List<OrderItem> _items = new();
+    private readonly List<IDomainEvent> _domainEvents = new();
 
     private Order() : base(Guid.Empty)
     {
@@ -66,7 +67,6 @@ public sealed class Order : Entity
         Status = OrderStatus.Pending;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
-        DomainEvents = new List<IDomainEvent>();
     }
 
     /// <summary>
@@ -90,13 +90,15 @@ public sealed class Order : Entity
         if (items is null || items.Count == 0)
             return Result<Order>.Failure(Error.Validation("Order must contain at least one item."));
 
-        if (totalAmount < 0)
-            return Result<Order>.Failure(Error.Validation("Total amount cannot be negative."));
+        var itemsTotal = items.Sum(i => i.Subtotal);
+        if (totalAmount != itemsTotal)
+            return Result<Order>.Failure(Error.Validation(
+                $"Total amount {totalAmount} does not match the sum of item subtotals {itemsTotal}."));
 
         var order = new Order(Guid.NewGuid(), customerId, reservationId, totalAmount, now);
         order._items.AddRange(items);
 
-        order.DomainEvents.Add(new OrderCreated(order.Id, order.CustomerId, order.TotalAmount, order.CreatedAt));
+        order._domainEvents.Add(new OrderCreated(order.Id, order.CustomerId, order.TotalAmount, order.CreatedAt));
 
         return Result<Order>.Success(order);
     }
@@ -112,7 +114,7 @@ public sealed class Order : Entity
 
         Status = OrderStatus.Paid;
         UpdatedAt = now;
-        DomainEvents.Add(new OrderPaid(Id, CustomerId, TotalAmount, now));
+        _domainEvents.Add(new OrderPaid(Id, CustomerId, TotalAmount, now));
     }
 
     /// <summary>
@@ -128,7 +130,7 @@ public sealed class Order : Entity
 
         Status = OrderStatus.PaidAfterExpiry;
         UpdatedAt = now;
-        DomainEvents.Add(new OrderPaidAfterExpiry(Id, CustomerId, TotalAmount, now, reason));
+        _domainEvents.Add(new OrderPaidAfterExpiry(Id, CustomerId, TotalAmount, now, reason));
     }
 
     /// <summary>
@@ -146,7 +148,7 @@ public sealed class Order : Entity
 
         Status = OrderStatus.RefundRequested;
         UpdatedAt = now;
-        DomainEvents.Add(new OrderRefundRequested(Id, reason, now));
+        _domainEvents.Add(new OrderRefundRequested(Id, reason, now));
     }
 
     /// <summary>
@@ -161,7 +163,7 @@ public sealed class Order : Entity
 
         Status = OrderStatus.Refunded;
         UpdatedAt = now;
-        DomainEvents.Add(new OrderRefunded(Id, now));
+        _domainEvents.Add(new OrderRefunded(Id, now));
     }
 
     /// <summary>
@@ -195,8 +197,8 @@ public sealed class Order : Entity
     /// </summary>
     public IReadOnlyList<IDomainEvent> GetAndClearDomainEvents()
     {
-        var events = DomainEvents.ToArray();
-        DomainEvents.Clear();
+        var events = _domainEvents.ToArray();
+        _domainEvents.Clear();
         return events;
     }
 }

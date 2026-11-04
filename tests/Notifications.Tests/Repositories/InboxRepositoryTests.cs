@@ -7,45 +7,51 @@ namespace Ticketing.Tests.Notifications.Repositories;
 
 public class InboxRepositoryTests
 {
-    private static InboxRepository CreateRepository(out NotificationsDbContext db)
+    [Fact]
+    public async Task TryStage_FirstDelivery_ReturnsTrue()
     {
         var options = new DbContextOptionsBuilder<NotificationsDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
-        db = new NotificationsDbContext(options);
-        return new InboxRepository(db);
-    }
+        var db = new NotificationsDbContext(options);
+        var repository = new InboxRepository(db);
 
-    [Fact]
-    public async Task TryRecord_FirstDelivery_ReturnsTrue()
-    {
-        var repository = CreateRepository(out _);
-
-        var isNew = await repository.TryRecordAsync(Guid.NewGuid(), "TicketIssued", "{}");
+        var isNew = await repository.TryStageAsync(Guid.NewGuid(), "TicketIssued", "{}");
+        await db.SaveChangesAsync(); // the caller's unit of work persists the staged row
 
         isNew.Should().BeTrue();
     }
 
     [Fact]
-    public async Task TryRecord_SameEventIdTwice_SecondIsDuplicate()
+    public async Task TryStage_SameEventIdTwice_SecondIsDuplicateAfterCommit()
     {
-        var repository = CreateRepository(out _);
+        var options = new DbContextOptionsBuilder<NotificationsDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new NotificationsDbContext(options);
+        var repository = new InboxRepository(db);
         var eventId = Guid.NewGuid();
 
-        var first = await repository.TryRecordAsync(eventId, "TicketIssued", "{}");
-        var second = await repository.TryRecordAsync(eventId, "TicketIssued", "{}");
+        var first = await repository.TryStageAsync(eventId, "TicketIssued", "{}");
+        await db.SaveChangesAsync();
+        var second = await repository.TryStageAsync(eventId, "TicketIssued", "{}");
 
         first.Should().BeTrue();
         second.Should().BeFalse();
     }
 
     [Fact]
-    public async Task TryRecord_DifferentEventIds_AreAllNew()
+    public async Task TryStage_DifferentEventIds_AreAllNew()
     {
-        var repository = CreateRepository(out _);
+        var options = new DbContextOptionsBuilder<NotificationsDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        var db = new NotificationsDbContext(options);
+        var repository = new InboxRepository(db);
 
-        var first = await repository.TryRecordAsync(Guid.NewGuid(), "TicketIssued", "{}");
-        var second = await repository.TryRecordAsync(Guid.NewGuid(), "TicketIssued", "{}");
+        var first = await repository.TryStageAsync(Guid.NewGuid(), "TicketIssued", "{}");
+        await db.SaveChangesAsync();
+        var second = await repository.TryStageAsync(Guid.NewGuid(), "TicketIssued", "{}");
 
         first.Should().BeTrue();
         second.Should().BeTrue();
