@@ -84,12 +84,37 @@ Postgres tests skip when Docker is absent and run in CI with Docker).
 - NetArchTest boundary rules: Domain depends only on SharedKernel; Contracts are pure
   DTOs; Application never references Infrastructure or Api.
 
+## Back-office screens (TV2 auxiliary frontend)
+
+`backend/admin-ui` — Vite + React 19 + TypeScript, plain CSS (TV5 can restyle or absorb
+the pages into the main portal).
+
+```bash
+cd backend/admin-ui
+npm install
+npm run dev        # http://localhost:5173 (CORS-allowed origin)
+npm run build      # type-checks and bundles to dist/
+npm run preview    # serves the build at http://localhost:4173 (also CORS-allowed)
+```
+
+Pages:
+- **Orders** (FR-13): customer lookup, order list with status chips, detail with items.
+- **Attendees** (FR-22): per-event attendee list; the backend joins Ticketing's issued
+  tickets with paid orders only, so a pending order's ticket is filtered out.
+- **Refunds**: status filters, approve/reject with an audit note (persisted on the
+  refund request and shown after processing); approving moves the order to Refunded.
+
+The API base URL is `VITE_ORDERS_API` (default `http://localhost:5001`). Allowed browser
+origins are configured in Orders.Api `Cors:AllowedOrigins`. JWT authorization remains
+TV1's host concern (policies listed above).
+
 ## Known limitations (honest)
 
 - No Docker on this machine: Testcontainers tests are verified by compile + skip probe;
   they must run in CI with Docker.
-- The React "order management / refund approval" screens are TV5's deliverable; TV2
-  ships the backing APIs (FR-13, FR-22, admin refunds).
+- The React "order management / refund approval" screens are delivered in
+  `backend/admin-ui` (TV2's auxiliary back office); TV5 may absorb them into the main
+  portal restyled with the platform's design system.
 - Real VNPay sandbox credentials (TmnCode/HashSecret) must be configured in appsettings
   or environment before pointing at the real gateway; placeholders ship by default.
   Missing config now fails startup (validated in VnPayPaymentService).
