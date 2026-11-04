@@ -6,7 +6,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Orders.Application\Orders.Application.csproj" />
-    <ProjectReference Include="..\Orders.Contracts\Orders.Contracts.csproj" />
     <ProjectReference Include="..\Orders.Infrastructure\Orders.Infrastructure.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.SharedKernel\Ticketing.SharedKernel.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.Infrastructure.Core\Ticketing.Infrastructure.Core.csproj" />

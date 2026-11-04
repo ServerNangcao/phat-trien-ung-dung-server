@@ -3,9 +3,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
+using Ticketing.Modules.Orders.Application.Repositories;
 using Ticketing.Modules.Orders.Domain.Entities;
 using Ticketing.Modules.Orders.Infrastructure.Payment;
-using Ticketing.Modules.Orders.Contracts;
 
 namespace Ticketing.Modules.Orders.Api.Endpoints;
 

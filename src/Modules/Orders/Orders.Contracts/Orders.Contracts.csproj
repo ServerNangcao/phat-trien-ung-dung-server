@@ -5,8 +5,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Orders.Domain\Orders.Domain.csproj" />
-    <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.SharedKernel\Ticketing.SharedKernel.csproj" />
     <PackageReference Include="MediatR.Contracts" />
   </ItemGroup>
 </Project>

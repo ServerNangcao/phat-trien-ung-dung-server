@@ -1,40 +1,69 @@
 using MediatR;
-using Ticketing.Infrastructure.Core.EventBus;
-using Ticketing.SharedKernel;
-using Ticketing.Modules.Orders.Contracts;
+using Ticketing.Modules.Orders.Application.Data;
+using Ticketing.Modules.Orders.Application.Ports;
+using Ticketing.Modules.Orders.Application.Repositories;
 using Ticketing.Modules.Orders.Domain.Entities;
-using Ticketing.Modules.Orders.Domain.Events;
 using Ticketing.Modules.Orders.Domain.ValueObjects;
+using Ticketing.SharedKernel;
 
 namespace Ticketing.Modules.Orders.Application.Commands;
 
 public sealed class CreateOrderCommandHandler : IRequestHandler<CreateOrderCommand, Result<Guid>>
 {
     private readonly IOrderRepository _orderRepository;
-    private readonly IEventBus _eventBus;
+    private readonly IUnitOfWork _unitOfWork;
+    private readonly ITicketingModuleApi _ticketingModuleApi;
     private readonly IClock _clock;
 
-    public CreateOrderCommandHandler(IOrderRepository orderRepository, IEventBus eventBus, IClock clock)
+    public CreateOrderCommandHandler(IOrderRepository orderRepository, IUnitOfWork unitOfWork,
+        ITicketingModuleApi ticketingModuleApi, IClock clock)
     {
         _orderRepository = orderRepository;
-        _eventBus = eventBus;
+        _unitOfWork = unitOfWork;
+        _ticketingModuleApi = ticketingModuleApi;
         _clock = clock;
     }
 
     public async Task<Result<Guid>> Handle(CreateOrderCommand request, CancellationToken cancellationToken)
     {
-        // Validate items
-        var items = request.Items.Select(i => OrderItem.Create(i.TicketTypeId, i.Quantity, i.Price)).ToList();
-        if (items.Any(r => r.IsFailure))
-            return Result<Guid>.Failure(Error.Validation(items.First(r => r.IsFailure).Error.Message));
+        var reservationResult = await _ticketingModuleApi.GetReservationAsync(request.ReservationId, cancellationToken);
+        if (reservationResult.IsFailure)
+            return Result<Guid>.Failure(reservationResult.Error);
 
-        var total = items.Sum(i => i.Value.Price * i.Value.Quantity);
-        var order = Order.Create(request.CustomerId, total, items.Select(i => i.Value).ToList(), _clock.UtcNow);
+        var reservation = reservationResult.Value;
+
+        if (reservation.CustomerId != request.CustomerId)
+            return Result<Guid>.Failure(Error.Validation("The reservation belongs to a different customer."));
+
+        if (!reservation.IsActive || reservation.ExpiresAtUtc <= _clock.UtcNow)
+            return Result<Guid>.Failure(Error.Validation(
+                "The reservation has expired or is no longer active. Please reserve the tickets again."));
+
+        // Idempotency: one reservation yields at most one active order, so a client retry
+        // after a timeout never creates a duplicate order.
+        var existing = await _orderRepository.GetByReservationIdAsync(reservation.ReservationId, cancellationToken);
+        if (existing is not null && existing.Status != OrderStatus.Cancelled)
+            return Result<Guid>.Success(existing.Id);
+
+        var items = new List<OrderItem>(reservation.Items.Count);
+        foreach (var item in reservation.Items)
+        {
+            var orderItem = OrderItem.Create(item.TicketTypeId, item.Quantity, item.UnitPrice);
+            if (orderItem.IsFailure)
+                return Result<Guid>.Failure(orderItem.Error);
+
+            items.Add(orderItem.Value);
+        }
+
+        var total = items.Sum(i => i.Subtotal);
+
+        var order = Order.Create(reservation.CustomerId, reservation.ReservationId, total, items, _clock.UtcNow);
         if (order.IsFailure)
             return Result<Guid>.Failure(order.Error);
 
         await _orderRepository.AddAsync(order.Value, cancellationToken);
-        await _eventBus.PublishAsync(new OrderCreated(order.Value.Id, order.Value.CustomerId, total, order.Value.CreatedAt), cancellationToken);
+        await _unitOfWork.CommitAsync(cancellationToken);
+
         return Result<Guid>.Success(order.Value.Id);
     }
 }

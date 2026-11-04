@@ -3,7 +3,6 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Ticketing.Modules.Orders.Domain.Entities;
-using Ticketing.Modules.Orders.Contracts;
 
 namespace Ticketing.Modules.Orders.Infrastructure.Payment;
 

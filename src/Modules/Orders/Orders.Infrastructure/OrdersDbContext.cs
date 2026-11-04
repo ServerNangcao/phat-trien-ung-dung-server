@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Ticketing.Infrastructure.Core.Outbox;
 using Ticketing.Infrastructure.Core.Persistence;
 using Ticketing.Modules.Orders.Domain.Entities;
-using Ticketing.Modules.Orders.Domain.ValueObjects;
+using Ticketing.Modules.Orders.Infrastructure.Outbox;
 
 namespace Ticketing.Modules.Orders.Infrastructure;
 
@@ -11,6 +13,9 @@ public sealed class OrdersDbContext : BaseDbContext
 
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<RefundRequest> RefundRequests => Set<RefundRequest>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
     public OrdersDbContext(DbContextOptions<OrdersDbContext> options) : base(options)
     {
@@ -28,8 +33,10 @@ public sealed class OrdersDbContext : BaseDbContext
             builder.Property(o => o.TotalAmount).HasColumnType("decimal(18,2)");
             builder.Property(o => o.Status).HasConversion<string>();
             builder.Property(o => o.CustomerId).IsRequired();
+            builder.Property(o => o.ReservationId).IsRequired();
             builder.Property(o => o.CreatedAt).IsRequired();
             builder.Property(o => o.UpdatedAt).IsRequired();
+            builder.Ignore(o => o.DomainEvents);
 
             builder.OwnsMany(o => o.Items, itemBuilder =>
             {
@@ -39,6 +46,7 @@ public sealed class OrdersDbContext : BaseDbContext
             });
 
             builder.HasIndex(o => o.CustomerId);
+            builder.HasIndex(o => o.ReservationId).IsUnique();
         });
 
         modelBuilder.Entity<RefundRequest>(builder =>
@@ -53,6 +61,75 @@ public sealed class OrdersDbContext : BaseDbContext
                 .WithMany()
                 .HasForeignKey(r => r.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+            builder.HasIndex(r => r.Status);
         });
+
+        modelBuilder.Entity<OutboxMessage>(builder =>
+        {
+            builder.ToTable("outbox_messages");
+            builder.HasKey(m => m.Id);
+            builder.Property(m => m.Type).IsRequired().HasMaxLength(500);
+            builder.Property(m => m.Content).IsRequired();
+            builder.Property(m => m.CreatedAt).IsRequired();
+            builder.HasIndex(m => m.ProcessedAt);
+        });
+    }
+
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    {
+        // The order state change and its outbox rows commit in one transaction: either both
+        // land or neither does, so an integration event can never be lost or orphaned.
+        var transaction = Database.CurrentTransaction is null
+            ? await Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        try
+        {
+            var result = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            await AppendIntegrationEventsToOutboxAsync(cancellationToken);
+            transaction?.Commit();
+            return result;
+        }
+        catch
+        {
+            transaction?.Rollback();
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
+    }
+
+    private async Task AppendIntegrationEventsToOutboxAsync(CancellationToken cancellationToken)
+    {
+        var entries = ChangeTracker.Entries<Order>()
+            .Where(e => e.Entity.DomainEvents.Count > 0)
+            .ToList();
+
+        if (entries.Count == 0)
+            return;
+
+        foreach (var entry in entries)
+        {
+            var order = entry.Entity;
+            foreach (var domainEvent in order.DomainEvents.ToList())
+            {
+                if (IntegrationEventMapper.Map(domainEvent, order) is { } integrationEvent)
+                {
+                    await Set<OutboxMessage>().AddAsync(new OutboxMessage
+                    {
+                        Type = integrationEvent.GetType().FullName!,
+                        Content = JsonSerializer.Serialize(integrationEvent, JsonOptions)
+                    }, cancellationToken);
+                }
+            }
+
+            order.GetAndClearDomainEvents();
+        }
+
+        await base.SaveChangesAsync(acceptAllChangesOnSuccess: true, cancellationToken);
     }
 }
