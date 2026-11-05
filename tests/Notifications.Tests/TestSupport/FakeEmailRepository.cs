@@ -55,6 +55,12 @@ public sealed class FakeUnitOfWork(FakeEmailRepository repository) : IUnitOfWork
     /// <summary>When set, the next commit returns this result instead of persisting (simulates a unique-index race).</summary>
     public Result? NextCommitResult { get; set; }
 
+    /// <summary>Simulates a concurrent duplicate winning the unique-index race on the next commit.</summary>
+    public void FailNextCommit(string message)
+    {
+        NextCommitResult = Result.Failure(Error.Conflict(message));
+    }
+
     public Task<Result> CommitAsync(CancellationToken cancellationToken = default)
     {
         CommitCount++;

@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────
 # CI Pipeline — Ticketing Modular Monolith
 # Runs on every push and PR to main/develop
-# Steps: restore → build → arch tests → docker build
+# Steps: restore → build → arch tests → Docker build → admin-ui E2E
 # ──────────────────────────────────────────────────────────
 
 name: CI
@@ -40,6 +40,12 @@ jobs:
       - name: Build solution
         run: dotnet build --no-restore -c Release
 
+      - name: Non-generic Result factory check
+        run: bash scripts/check-bare-result.sh
+
+      - name: Run tests
+        run: dotnet test --no-build -c Release --verbosity normal
+
       - name: Run Architecture Tests
         run: dotnet test tests/Architecture.Tests/Architecture.Tests.csproj --no-build -c Release --verbosity normal
 
@@ -55,7 +61,7 @@ jobs:
       - name: Build Docker image
         run: docker build -f backend/Dockerfile -t ticketing-api:ci .
 
-      # Kiểm tra csproj trong Dockerfile — nếu thêm project mới mà quên thêm COPY thì fail ở đây
+      # Verify csproj in Dockerfile — if new project added but COPY missing, fail here
       - name: Verify container starts
         run: |
           docker run -d --name ci-test \
@@ -66,3 +72,24 @@ jobs:
           docker logs ci-test
           docker stop ci-test
           docker rm ci-test
+
+  admin-ui:
+    name: Admin UI Build & E2E
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: admin-ui/package-lock.json
+      - run: npm ci
+      - name: Build (type-check + bundle)
+        run: npm run build
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: E2E tests (boots Orders.Api + mock Ticketing + UI)
+        run: npm run test:e2e

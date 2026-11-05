@@ -66,7 +66,7 @@ public class TicketEmailProcessorTests
     public async Task Prepare_ConcurrentDuplicateLostUniqueRace_ReportsNotNew()
     {
         var (processor, repository, _, unitOfWork) = CreateProcessor();
-        unitOfWork.NextCommitResult = Result.Failure(Error.Conflict("A duplicate record was committed concurrently."));
+        unitOfWork.FailNextCommit("A duplicate record was committed concurrently.");
 
         var prepared = await processor.PrepareIncomingAsync(ValidEvent());
 
