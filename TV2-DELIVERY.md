@@ -124,6 +124,12 @@ TV1's host concern (policies listed above).
 - Real VNPay sandbox credentials (TmnCode/HashSecret) must be configured in appsettings
   or environment before pointing at the real gateway; placeholders ship by default.
   Missing config now fails startup (validated in VnPayPaymentService).
+  **Setup path**: `bash scripts/vnpay-sandbox-setup.sh` — an interactive wizard that
+  walks through registering at sandbox.vnpayment.vn/devreg, captures TmnCode +
+  HashSecret into `dotnet user-secrets` (kept out of source), and ends by opening a
+  live sandbox payment URL generated with the real credentials. It also decides the
+  signing conflict below: if the sandbox payment page loads, the current raw-value
+  signing is correct.
 - **VNPay signing — named assumption, decided by the first live payment.** The
   implementation hashes RAW (URL-decoded) values per the official merchant samples.
   The leading Node reference library (github.com/lehuygiang28/vnpay, verified from its

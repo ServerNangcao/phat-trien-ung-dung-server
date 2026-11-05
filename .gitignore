@@ -37,3 +37,4 @@ docs/**/*.md
 admin-ui/e2e/.seed.json
 admin-ui/test-results/
 admin-ui/playwright-report/
+.env.vnpay
