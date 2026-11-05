@@ -127,17 +127,43 @@ TV1's host concern (policies listed above).
   **Setup path**: `bash scripts/vnpay-sandbox-setup.sh` — an interactive wizard that
   walks through registering at sandbox.vnpayment.vn/devreg, captures TmnCode +
   HashSecret into `dotnet user-secrets` (kept out of source), and ends by opening a
-  live sandbox payment URL generated with the real credentials. It also decides the
-  signing conflict below: if the sandbox payment page loads, the current raw-value
-  signing is correct.
-- **VNPay signing — named assumption, decided by the first live payment.** The
-  implementation hashes RAW (URL-decoded) values per the official merchant samples.
-  The leading Node reference library (github.com/lehuygiang28/vnpay, verified from its
-  source: `calculateSecureHash` over `URLSearchParams.toString()`) hashes the
-  URL-ENCODED query string instead. The official docs site is a JS-rendered SPA and
-  could not be read headlessly, so the conflict is recorded rather than guessed away.
-  If the first sandbox payment returns RspCode 97, flip SignData/Verify + the test
-  helper to URL-encoded form — the exact procedure is documented on both classes.
+  live sandbox payment URL generated with the real credentials. **Portal login note**:
+  the merchant admin SPA needs the anti-forgery cookie from a prior GET before the
+  submit works; log in with a browser or Playwright, not a plain `curl` POST.
+- **VNPay signing — RESOLVED (2026-11-05, live sandbox evidence).** The scheme is
+  **HMAC-SHA512 over the sorted `key=value` pairs joined with `&`, with values
+  URL-encoded (`space as '+'`, `URLSearchParams` rules)**. This is what the code
+  already does (`VnPayPaymentService.EncodeVnpayValue` / `SignData`,
+  `VnPayTestHelper.Encode`); no code change was needed.
+
+  Evidence, in order of strength:
+  1. The official docs' own example URL
+     (`sandbox.vnpayment.vn/paymentv2/vpcpay.html?...&vnp_TmnCode=DEMOV210&vnp_SecureHash=3e0d61…`)
+     returns **code 15 (expired waiting time)**, not code 70 — i.e. the gateway
+     *verified the signature* and only rejected the timestamp. Reproducing that
+     signature required SHA512 + URL-encoded values; raw-value SHA512 and SHA256
+     variants all fail.
+  2. The official NodeJS sample signs with `querystring.stringify(params, { encode: false })`
+     (raw values) but *sends* the encoded transport; the PHP sample URL-encodes both.
+     The gateway's own error page is dynamic: `code=70` renders **"Invalid signature"**
+     while `code=15`/`code=99` render a generic message, so the gateway is genuinely
+     checking the checksum.
+  3. The `merchant_webapi` querydr endpoint is unreliable (returns `99 Unexpected error`
+     for valid and invalid signatures alike), so it was not used as an oracle.
+  4. The portal (JS-rendered SPA) was read with Playwright after cracking the login
+     (the login form needs the anti-forgery cookie established first, then submit via
+     Enter — clicking the button is intercepted by a modal). Terminal **IAS2CKBJ**
+     ("Ticketing System") exists and its `hashType` is **HMACSHA512**, matching the
+     code. The HashSecret is not displayed in the UI (only `ipnUrl`, `callType`,
+     `hashType`, `configData` are editable).
+  5. **BLOCKER: the HashSecret from the devreg email does not validate.** Every
+     signing variant (raw/encoded/%20 × SHA256/SHA512, ±SecureHashType, different
+     IPs, NCB bank code, no locale) returns code 70. Community reports and the
+     HikaShop plugin docs confirm code 70 = "the hash secret does not match the
+     terminal code". The terminal exists with the right algorithm, so the secret
+     itself is wrong. Fix: regenerate the secret in the portal or request a fresh
+     TmnCode/HashSecret pair from sandbox.vnpayment.vn/devreg. Until then the live
+     sandbox payment page cannot be opened — the signing *code* is correct and ready.
 - **VNPay IPN contract — verified against the reference library**: HTTP 200 with JSON
   `{RspCode, Message}`; `00` success, `01` order not found, `04` invalid amount,
   `97` invalid checksum, `99` other. The implementation matches this table.

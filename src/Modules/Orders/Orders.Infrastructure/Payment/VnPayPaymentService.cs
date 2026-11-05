@@ -19,16 +19,11 @@ public sealed class VnPayOptions
 
 /// <summary>
 /// VNPay payment gateway integration (v2.1.0). The HMAC-SHA512 signature is computed over
-/// the sorted key=value pairs joined with '&amp;' using the RAW (URL-decoded) values, per the
-/// official VNPay merchant sample. Values must not contain reserved characters ('&amp;', '=',
-/// '#', '?', '+', '%'), which vnp_OrderInfo content must therefore avoid.
-///
-/// KNOWN ECOSYSTEM CONFLICT, decided on first live sandbox test: the leading Node
-/// reference library (lehuygiang28/vnpay) instead hashes the URL-encoded query string
-/// built by URLSearchParams, while the official merchant samples hash raw values. If the
-/// gateway answers RspCode 97 (invalid checksum) on the first real payment, switch
-/// SignData and VerifyCallbackSignature to hash the URL-encoded form (space as '+',
-/// URLSearchParams rules) and update VnPayTestHelper to match.
+/// the sorted key=value pairs joined with '&amp;' using the URL-ENCODED values (space as '+',
+/// URLSearchParams rules), matching the leading Node reference library
+/// (lehuygiang28/vnpay). The official merchant samples hash raw values, but the live sandbox
+/// gateway rejected raw-value signing with "Invalid signature" on the first real payment,
+/// confirming the encoded form is what the gateway expects.
 /// </summary>
 public sealed class VnPayPaymentService
 {
@@ -54,10 +49,17 @@ public sealed class VnPayPaymentService
     /// <summary>
     /// Generate VNPay payment URL with HMAC-SHA512 signature.
     /// </summary>
+    /// <summary>The VNPay gateway works in GMT+7 (no DST in Vietnam); its timestamps
+    /// (<c>vnp_CreateDate</c>, <c>vnp_ExpireDate</c>, IPN <c>vnp_PayDate</c>) are wall
+    /// times in that zone. Sending UTC makes the gateway see the transaction as 7 hours
+    /// old and fail it with payment-page error code 15 (exceeded waiting time).</summary>
+    private static readonly TimeSpan GatewayOffset = TimeSpan.FromHours(7);
+
     public string GeneratePaymentUrl(Guid orderId, decimal amount, string orderDescription, string? ipAddress)
     {
-        var timeStamp = DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmss");
-        var expire = DateTimeOffset.UtcNow.AddMinutes(15).ToString("yyyyMMddHHmmss");
+        var now = DateTimeOffset.UtcNow.ToOffset(GatewayOffset);
+        var timeStamp = now.ToString("yyyyMMddHHmmss");
+        var expire = now.AddMinutes(15).ToString("yyyyMMddHHmmss");
 
         var data = new Dictionary<string, string>
         {
@@ -78,7 +80,7 @@ public sealed class VnPayPaymentService
 
         var signature = SignData(data);
         var queryString = string.Join("&", data.OrderBy(kvp => kvp.Key)
-            .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+            .Select(kvp => $"{EncodeVnpayValue(kvp.Key)}={EncodeVnpayValue(kvp.Value)}"));
         var paymentUrl = $"{_options.BaseUrl}?{queryString}&vnp_SecureHash={signature}";
 
         _logger.LogInformation("Generated VNPay payment URL for order {OrderId}", orderId);
@@ -86,15 +88,16 @@ public sealed class VnPayPaymentService
     }
 
     /// <summary>
-    /// Verify VNPay callback signature. Callback values must be URL-decoded (e.g. from
-    /// HttpRequest.Query); the signature is computed over the raw values.
+    /// Verify VNPay callback signature. Callback values are URL-decoded (e.g. from
+    /// HttpRequest.Query); the signature is computed over the URL-ENCODED form with space as '+'
+    /// (URLSearchParams rules) to match what the gateway signs.
     /// </summary>
     public bool VerifyCallbackSignature(Dictionary<string, string?> callbackData, string secureHash)
     {
         var sortedData = callbackData
             .Where(kvp => kvp.Key != "vnp_SecureHash" && !string.IsNullOrEmpty(kvp.Value))
             .OrderBy(kvp => kvp.Key)
-            .Select(kvp => $"{kvp.Key}={kvp.Value}");
+            .Select(kvp => $"{kvp.Key}={EncodeVnpayValue(kvp.Value!)}");
 
         var queryString = string.Join("&", sortedData);
         var calculatedHash = GenerateHmacSha512(_options.HashSecret!, queryString);
@@ -133,7 +136,7 @@ public sealed class VnPayPaymentService
             BankCode = bankCode ?? string.Empty,
             TransactionDate = DateTime.TryParseExact(dateStr, "yyyyMMddHHmmss",
                 System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                System.Globalization.DateTimeStyles.None,
                 out var date) ? date : DateTime.MinValue,
             ResponseCode = responseCode ?? string.Empty,
             SecureHash = secureHash ?? string.Empty
@@ -145,9 +148,16 @@ public sealed class VnPayPaymentService
         var queryString = string.Join("&", data
             .Where(kvp => !string.IsNullOrEmpty(kvp.Value))
             .OrderBy(kvp => kvp.Key)
-            .Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            .Select(kvp => $"{kvp.Key}={EncodeVnpayValue(kvp.Value)}"));
 
         return GenerateHmacSha512(_options.HashSecret!, queryString);
+    }
+
+    /// <summary>URL-encodes a value the way URLSearchParams does: space as '+', not '%20'.
+    /// Uri.EscapeDataString uses %20, which the VNPay gateway rejects as an invalid signature.</summary>
+    private static string EncodeVnpayValue(string value)
+    {
+        return Uri.EscapeDataString(value).Replace("%20", "+");
     }
 
     private static string GenerateHmacSha512(string key, string data)
