@@ -8,6 +8,11 @@ namespace Ticketing.Tests.Orders.TestSupport;
 /// documented algorithm (sorted raw key=value pairs joined with &amp;, RAW values — not
 /// URL-encoded), so the service under test is cross-checked against the spec.
 /// The secret must match the Orders.Api appsettings used by the WAF tests.
+///
+/// ECOSYSTEM CONFLICT (see VnPayPaymentService docs): the leading Node reference library
+/// signs the URL-ENCODED query string instead. Both cannot be right against the real
+/// gateway; the first live sandbox payment decides. If the gateway returns RspCode 97,
+/// change this helper's Sign to hash the URL-encoded form so the suite tracks the flip.
 /// </summary>
 public static class VnPayTestHelper
 {

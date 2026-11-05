@@ -124,6 +124,20 @@ TV1's host concern (policies listed above).
 - Real VNPay sandbox credentials (TmnCode/HashSecret) must be configured in appsettings
   or environment before pointing at the real gateway; placeholders ship by default.
   Missing config now fails startup (validated in VnPayPaymentService).
+- **VNPay signing — named assumption, decided by the first live payment.** The
+  implementation hashes RAW (URL-decoded) values per the official merchant samples.
+  The leading Node reference library (github.com/lehuygiang28/vnpay, verified from its
+  source: `calculateSecureHash` over `URLSearchParams.toString()`) hashes the
+  URL-ENCODED query string instead. The official docs site is a JS-rendered SPA and
+  could not be read headlessly, so the conflict is recorded rather than guessed away.
+  If the first sandbox payment returns RspCode 97, flip SignData/Verify + the test
+  helper to URL-encoded form — the exact procedure is documented on both classes.
+- **VNPay IPN contract — verified against the reference library**: HTTP 200 with JSON
+  `{RspCode, Message}`; `00` success, `01` order not found, `04` invalid amount,
+  `97` invalid checksum, `99` other. The implementation matches this table.
+- **VNPay refund API is restricted in sandbox** (reference-library docs): the gateway
+  refund call is deliberately left to the payments side via
+  `RefundProcessedIntegrationEvent`, so the sandbox flow completes without it.
 - The Ticketing HTTP routes in `HttpTicketingModuleApi` are a consumer-driven contract;
   when TV4 ships Tickets.Contracts, the adapter is the only file that may need mapping.
 - TV1's central outbox worker (FOR UPDATE SKIP LOCKED) is not part of this delivery;

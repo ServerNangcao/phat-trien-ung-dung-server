@@ -20,8 +20,15 @@ public sealed class VnPayOptions
 /// <summary>
 /// VNPay payment gateway integration (v2.1.0). The HMAC-SHA512 signature is computed over
 /// the sorted key=value pairs joined with '&amp;' using the RAW (URL-decoded) values, per the
-/// VNPay specification — the values must not contain reserved characters ('&amp;', '=', '#',
-/// '?', '+', '%'), which vnp_OrderInfo content must therefore avoid.
+/// official VNPay merchant sample. Values must not contain reserved characters ('&amp;', '=',
+/// '#', '?', '+', '%'), which vnp_OrderInfo content must therefore avoid.
+///
+/// KNOWN ECOSYSTEM CONFLICT, decided on first live sandbox test: the leading Node
+/// reference library (lehuygiang28/vnpay) instead hashes the URL-encoded query string
+/// built by URLSearchParams, while the official merchant samples hash raw values. If the
+/// gateway answers RspCode 97 (invalid checksum) on the first real payment, switch
+/// SignData and VerifyCallbackSignature to hash the URL-encoded form (space as '+',
+/// URLSearchParams rules) and update VnPayTestHelper to match.
 /// </summary>
 public sealed class VnPayPaymentService
 {
