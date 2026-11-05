@@ -1,14 +1,20 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>CheckIn.Internal</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\CheckIn.Contracts\CheckIn.Contracts.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.SharedKernel\Ticketing.SharedKernel.csproj" />
     <ProjectReference Include="..\..\..\BuildingBlocks\Ticketing.Infrastructure.Core\Ticketing.Infrastructure.Core.csproj" />
     <ProjectReference Include="..\..\Ticketing\Ticketing.Contracts\Ticketing.Contracts.csproj" />
+    <ProjectReference Include="..\..\Events\Events.Contracts\Events.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Identity.Contracts\Identity.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

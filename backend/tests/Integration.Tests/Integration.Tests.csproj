@@ -20,6 +20,10 @@
     <ProjectReference Include="..\..\src\BuildingBlocks\Ticketing.Infrastructure.Core\Ticketing.Infrastructure.Core.csproj" />
     <ProjectReference Include="..\..\src\Modules\Notifications\Notifications.Contracts\Notifications.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Notifications\Notifications.Internal\Notifications.Internal.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ticketing\Ticketing.Contracts\Ticketing.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ticketing\Ticketing.Internal\Ticketing.Internal.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CheckIn\CheckIn.Contracts\CheckIn.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\CheckIn\CheckIn.Internal\CheckIn.Internal.csproj" />
   </ItemGroup>
 
 </Project>
