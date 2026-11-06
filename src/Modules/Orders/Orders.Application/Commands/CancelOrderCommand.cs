@@ -41,6 +41,10 @@ public sealed class CancelOrderCommandHandler : IRequestHandler<CancelOrderComma
         if (order is null)
             return Result<CancelOrderResult>.Failure(Error.NotFound($"Order {request.OrderId} not found."));
 
+        // Idempotent: if already cancelled, return success with current status
+        if (order.Status == OrderStatus.Cancelled)
+            return Result<CancelOrderResult>.Success(new CancelOrderResult(order.Id, order.Status.ToString()));
+
         if (order.Status != OrderStatus.Pending)
             return Result<CancelOrderResult>.Failure(Error.Validation(
                 $"Only pending orders can be cancelled. Order {order.Id} is {order.Status}."));

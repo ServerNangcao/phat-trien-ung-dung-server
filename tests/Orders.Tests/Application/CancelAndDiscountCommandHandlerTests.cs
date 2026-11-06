@@ -108,7 +108,7 @@ public class CancelAndDiscountCommandHandlerTests
     }
 
     [Fact]
-    public async Task Cancel_AlreadyCancelled_Rejects()
+    public async Task Cancel_AlreadyCancelled_ReturnsSuccessIdempotent()
     {
         var ticketing = new FakeTicketingModuleApi();
         var (handler, db) = CreateCancelHandler(ticketing);
@@ -118,8 +118,9 @@ public class CancelAndDiscountCommandHandlerTests
 
         var result = await handler.Handle(new CancelOrderCommand(order.Id), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("ValidationError");
+        // Idempotent: already-cancelled order returns success (not failure)
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be(OrderStatus.Cancelled.ToString());
     }
 
     [Fact]
