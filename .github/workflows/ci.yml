@@ -12,6 +12,9 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
 env:
   DOTNET_VERSION: '10.0.x'
   DOTNET_NOLOGO: true
@@ -41,7 +44,7 @@ jobs:
         run: dotnet build --no-restore -c Release
 
       - name: Non-generic Result factory check
-        run: bash scripts/check-bare-result.sh
+        run: bash ../scripts/check-bare-result.sh
 
       - name: Run tests
         run: dotnet test --no-build -c Release --verbosity normal

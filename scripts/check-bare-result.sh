@@ -9,13 +9,17 @@
 # Allowlist (declared non-generic Result):
 #   - **/Infrastructure/Data/UnitOfWork.cs  (IUnitOfWork.CommitAsync returns Task<Result>)
 #   - tests/Notifications.Tests/TestSupport/FakeEmailRepository.cs (FakeUnitOfWork double)
+#   - src/Modules/Orders/Orders.Infrastructure/Ports/HttpTicketingModuleApi.cs (CancelReservationAsync returns Task<Result>)
+#   - tests/Orders.Tests/TestSupport/FakeTicketingModuleApi.cs (CancelReservationAsync test double returns Task<Result>)
 # Extend the allowlist only with the same justification.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 violations=$(grep -rn --include='*.cs' -E '\bResult\.(Success|Failure)\(' src tests \
   | grep -v 'Data/UnitOfWork.cs' \
-  | grep -v 'TestSupport/FakeEmailRepository.cs' || true)
+  | grep -v 'TestSupport/FakeEmailRepository.cs' \
+  | grep -v 'Orders.Infrastructure/Ports/HttpTicketingModuleApi.cs' \
+  | grep -v 'Orders.Tests/TestSupport/FakeTicketingModuleApi.cs' || true)
 
 if [ -n "$violations" ]; then
   echo "check-bare-result: bare Result.Success/Failure found." >&2
