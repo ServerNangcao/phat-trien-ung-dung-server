@@ -1,0 +1,592 @@
+<!DOCTYPE html><html class="no-js"><!--<![endif]--><head>
+    <title>Thay đổi thông tin IPN</title>
+    <meta charset="utf-8">
+    <!--[if IE]><meta http-equiv='X-UA-Compatible' content="IE=edge,IE=9,IE=8,chrome=1" /><![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=0, minimum-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta content="" name="description">
+    <meta content="" name="author">
+    <link rel="shortcut icon" href="/merchantv2/favicon.ico">
+    <link rel="stylesheet" href="/merchantv2/Styles/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/merchantv2/Styles/js/font-awesome/css/font-awesome.min.css">
+    <link href="/merchantv2/Styles/js/bs-datepicker/css/datepicker.css" rel="stylesheet">
+    <link rel="stylesheet" href="/merchantv2/Styles/fonts/style.css">
+    <link rel="stylesheet" href="/merchantv2/Styles/css/main.css">
+    <link rel="stylesheet" href="/merchantv2/Styles/css/main-responsive.css">
+    <link rel="stylesheet" href="/merchantv2/Styles/css/theme_light.css" type="text/css" id="skin_color">
+    <link rel="stylesheet" href="/merchantv2/Styles/css/print.css" type="text/css" media="print">
+    <link href="/merchantv2/Styles/js/select2/select2.css" rel="stylesheet">
+    <link href="/merchantv2/Styles/js/iCheck/skins/all.css" rel="stylesheet">
+    <!--[if IE 7]>
+        <link href="~/Styles/js/font-awesome/css/font-awesome.min.css" rel="stylesheet" />
+    <![endif]-->
+    <link rel="stylesheet" href="/merchantv2/Styles/js/select2/select2.css">
+    <link href="/merchantv2/Styles/js/bs-modal/css/bootstrap-modal-bs3patch.css" rel="stylesheet" type="text/css">
+    <link href="/merchantv2/Styles/js/bs-modal/css/bootstrap-modal.css" rel="stylesheet" type="text/css">
+    <link rel="shortcut icon" href="/merchantv2/Styles/images/favicon.ico">
+    
+</head>
+<body class="layout-boxed">
+    <!--loading -->
+    <div id="loading" class="center" style="position: fixed; width: 100%; height: 100%; left: 0px; top: 0px; z-index: 9999; display: none;">
+        <p>
+            <img style="display: block; margin: 250px auto;" src="/merchantv2/Styles/images/loading-1.gif">
+        </p>
+    </div>
+    <!-- start: HEADER -->
+    <div class="navbar navbar-inverse navbar-fixed-top">
+        <!-- start: TOP NAVIGATION CONTAINER -->
+        <div class="container">
+            <div class="navbar-header">
+                <button data-target=".navbar-collapse" data-toggle="collapse" class="navbar-toggle" type="button">
+                    <span class="clip-list-2"></span>
+                </button>
+                <a class="navbar-brand" href="/merchantv2/Home/Dashboard.htm">
+                    <img src="/merchantv2/Styles/images/logo.png" width="140" height="50" alt="">
+                </a>
+            </div>
+            <div class="navbar-tools">
+                <!-- start: TOP NAVIGATION MENU -->
+                <ul class="nav navbar-right">
+                    <li class=""><a href="/merchantv2/Home/Dashboard.htm">Màn hình chính</a></li>
+                    <li><a href="https://vnpay.vn/dich-vu-vnpay-qr/" target="_blank">Hướng dẫn </a></li>
+                    <li><a href="https://vnpay.vn/dang-ky-tu-van/" target="_blank">Trợ giúp </a></li>
+                    <!-- start: USER DROPDOWN -->
+                    <li class="dropdown current-user">
+                        <a data-toggle="dropdown" data-hover="dropdown" class="dropdown-toggle" data-close-others="true" href="#">
+                            <img src="/merchantv2/Styles/images/ava.png" width="30" height="30" alt="">
+                            <span class="username" id="tmnName">Ticketing System</span>
+                            <i class="clip-chevron-down"></i>
+                        </a>
+                        <ul class="dropdown-menu">
+                                    <li><a href="/merchantv2/Account/AccountDetail.htm">Thông tin tài khoản</a></li>
+
+                
+                <li><a href="/merchantv2/Users/ChangePass.htm">Đổi mật khẩu</a></li>
+                
+                <li><a href="/merchantv2/Users/Logout.htm">Đăng xuất</a></li>
+                </ul>
+                </li>
+                </ul>
+                    <div class="hotline" style=" position:absolute; right:57px; top:4px"><a href="tel:+842438291291" style="color:red; font-weight:bold; font-size:14px;">Hotline: *3388 / 024 38 291 291</a></div>
+                    <div class="language">
+                        <a href="/merchantv2/Account/TerminalEdit.htm?lang=vi-VN"><img src="/merchantv2/Styles/images/ic_vi.png" width="24" height="24" alt="Tiếng Việt"></a>
+                        <a href="/merchantv2/Account/TerminalEdit.htm?lang=en-US"><img src="/merchantv2/Styles/images/ic_en.png" width="24" height="24" alt="English"></a>
+                    </div>
+                </div>
+            </div>
+            <!-- end: TOP NAVIGATION CONTAINER -->
+            <div class="breadcrumb">
+                
+            </div>
+        </div>
+        <div class="main-container">
+            <div class="navbar-content">
+<!-- start: SIDEBAR -->
+<div class="main-navigation navbar-collapse collapse">
+<!-- start: MAIN NAVIGATION MENU -->
+
+<h4>Thông tin chung</h4>
+<ul class="main-navigation-menu">
+    <li>
+        <a href="/merchantv2/Home/Dashboard.htm">
+            <i class="clip-home-3"></i>
+            <span class="title"> Màn hình chính</span><span class="selected"></span>
+        </a>
+    </li>
+</ul>
+<h4>Giao dịch</h4>
+<ul class="main-navigation-menu">
+    <li class="">
+        <a href="/merchantv2/Transaction/PaymentSearch.htm">
+            <i class="clip-cursor"></i>
+            <span class="title"> GD Thanh toán </span><span class="selected"></span>
+        </a>
+        <ul style="display: none !important">
+            <li>
+                <a href="/merchantv2/Transaction/PaymentSearch.htm">
+                    <span class="title"> </span>
+                </a>
+            </li>
+            <li>
+                <a href="/merchantv2/Transaction/PaymentDetail.htm">
+                    <span class="title"> </span>
+                </a>
+            </li>
+            <li>
+                <a href="/merchantv2/Transaction/Refund.htm">
+                    <span class="title"> </span>
+                </a>
+            </li>
+        </ul>
+    </li>
+
+    <!-- RoleId == 3: Sales, not view refund-->
+        <li>
+            <a href="/merchantv2/Transaction/SearchRefund.htm">
+                <i class=" clip-redo"></i>
+                <span class="title"> Giao dịch hoàn trả</span><span class="selected"></span>
+            </a>
+            <ul style="display: none !important">
+                <li>
+                    <a href="/merchantv2/Transaction/PaymentRefundDetail.htm">
+                        <span class="title"> </span>
+                    </a>
+                </li>
+            </ul>
+        </li>
+    <li>
+        <a href="/merchantv2/Transaction/SearchOrder.htm">
+            <i class="clip-cart"></i>
+            <span class="title"> Yêu cầu thanh toán </span><span class="selected"></span>
+        </a>
+        <ul style="display: none !important">
+            <li>
+                <a href="/merchantv2/Transaction/DetailOrder.htm">
+                    <span class="title"> </span>
+                </a>
+            </li>
+        </ul>
+    </li>
+
+    <li>
+        <a href="#">
+            <i class="clip-bars"></i>
+            <span class="title">Báo cáo</span><i class="icon-arrow"></i>
+        </a>
+        <ul class="sub-menu">
+            <li>
+                <a href="/merchantv2/Report/ReportTnx.htm">
+                    <i class="clip-file"></i>
+                    <span class="title">Báo cáo chi tiết giao dịch</span>
+                </a>
+            </li>
+            <li>
+                <a href="/merchantv2/Report/ReportTnxSummary.htm">
+                    <i class="clip-file"></i>
+                    <span class="title">Báo cáo tổng hợp giao dịch</span>
+                </a>
+            </li>
+            <li>
+                <a href="/merchantv2/Report/ReportDetailInternationalCard.htm">
+                    <i class="clip-file"></i>
+                    <span class="title">Báo cáo chi tiết GD thẻ quốc tế theo NHPH</span>
+                </a>
+            </li>
+                        <li>
+                <a href="/merchantv2/Report/ReportInstallmentDetail.htm">
+                    <i class="clip-file"></i>
+                    <span class="title"> Báo cáo chi tiết GD chuyển đổi trả góp thành công</span>
+                </a>
+            </li>
+        </ul>
+    </li>
+</ul>
+    <h4>Công cụ</h4>
+    <ul class="main-navigation-menu">
+        <li>
+            <a href="#">
+                <i class="clip-link-3"></i>
+                <span class="title">Link thanh toán</span><i class="icon-arrow"></i>
+            </a>
+            <ul class="sub-menu">
+                <li>
+                    <a href="/merchantv2/PaymentLink/Create.htm">
+                        <i class="clip-add"></i>
+                        <span class="title"> Tạo link thanh toán</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/merchantv2/PaymentLink/CreateBatch.htm">
+                        <i class="clip-add"></i>
+                        <span class="title"> Tạo link thanh toán theo lô</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/merchantv2/PaymentLink/Orders.htm">
+                        <i class="clip-stats"></i>
+                        <span class="title"> Quản lý đơn hàng</span>
+                    </a>
+                </li>
+            </ul>
+        </li>
+        <li>
+            <a href="#">
+                <i class="clip-bars"></i>
+                <span class="title">Nút Thanh toán</span><i class="icon-arrow"></i>
+            </a>
+            <ul class="sub-menu">
+                <li>
+                    <a href="/merchantv2/Tools/CreateButton.htm">
+                        <i class="clip-add"></i>
+                        <span class="title"> Tạo nút Thanh toán</span>
+                    </a>
+                </li>
+                <li>
+                    <a href="/merchantv2/Tools/HistoryButton.htm">
+                        <i class="clip-history"></i>
+                        <span class="title"> Lịch sử</span>
+                    </a>
+                </li>
+            </ul>
+        </li>
+        
+            <li>
+                <a href="/merchantv2/Tools/NotifyManager.htm">
+                    <i class="clip-notification"></i>
+                    <span class="title"> Cài đặt thông báo</span>
+                </a>
+            </li>
+        <li>
+            <a href="/merchantv2/Tools/OrderInfo.htm">
+                <i class="clip-cursor"></i>
+                <span class="title"> Quản lý đơn hàng</span>
+            </a>
+        </li>
+    </ul>
+
+
+<div class="navigation-toggler">
+    <i class="clip-chevron-left"></i>
+    <i class="clip-chevron-right"></i>
+</div>
+
+</div>
+
+</div>
+            <div class="main-content">
+                
+<!-- start: PAGE -->
+<div class="container container-edit">
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="panel panel-default">
+                <div class="panel-heading">
+                    Thay đổi thông tin cấu hình
+                </div>
+                    <div class="panel-body">
+                        <label class="error hidden" id="error">
+                        </label>
+                        <form id="terminalEdit" name="terminalEdit" method="POST" action="/merchantv2/Account/TerminalEdit.htm" novalidate="novalidate">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <div class="col-xs-12">
+                                        <h3 class="title-normal">Thông tin cấu hình</h3>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ipnUrl" class="col-sm-3 control-label">
+                                        IPN Url <span class="symbol required"></span>
+                                    </label>
+                                    <div class="col-sm-8">
+                                        <input class="form-control" id="ipnUrl" maxlength="255" name="ipnUrl" placeholder="http://" type="text" value="#">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <div class="col-sm-3">
+                                    </div>
+                                    <div class="col-sm-8">
+                                        <a href="javascript:void(0)" id="testIpn">Test call IPN</a>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="callType" class="col-sm-3 control-label">
+                                        Giao thức IPN <span class="symbol required"></span>
+                                    </label>
+                                    <div class="col-sm-8">
+                                        <select aria-expanded="false" class="form-control" data-style="btn-primary" id="callType" name="callType"><option selected="selected" value="3">GET</option>
+<option value="1">SOAP</option>
+</select>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="hashType" class="col-sm-3 control-label">
+                                        Kiểu mã hóa <span class="symbol required"></span>
+                                    </label>
+                                    <div class="col-sm-8">
+                                        <select aria-expanded="false" class="form-control" data-style="btn-primary" id="hashType" name="hashType"><option value="MD5">MD5</option>
+<option value="TriDes">TriDes</option>
+<option value="SHA256">SHA256</option>
+<option selected="selected" value="HMACSHA512">HMACSHA512</option>
+</select>
+                                    </div>
+                                </div>
+                                
+                                <input type="hidden" value="{&quot;callType&quot;:&quot;3&quot;,&quot;qrMerchant&quot;:&quot;1&quot;,&quot;techEmail&quot;:&quot;&quot;}" id="configData" name="configData">
+                                <div class="clear"></div>
+                                <div class="clearfix form-actions center">
+                                    <a href="javascript:window.history.back();" class="btn btn-sm btn-primary showloading">Quay lại</a>
+                                    <a href="javascript:void(0)" class="btn btn-sm btn-primary" id="btnSave">Hoàn thành</a>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+            </div>
+        </div>
+        <div class="footer clearfix">
+            <div class="footer-inner">
+                Thiết kế bởi VNPAY.
+            </div>
+            <div class="footer-items">
+                <span class="go-top"><i class="clip-chevron-up"></i></span>
+            </div>
+        </div>
+        <!--[if lt IE 9]>
+        <script src="~/Styles/js/respond.min.js"></script>
+        <script src="~/Scripts/jquery-3.5.1.min.js"></script>
+        <![endif]-->
+        <!--[if gte IE 9]><!-->
+        <script src="/merchantv2/Scripts/jquery-3.5.1.min.js"></script>
+        <!--<![endif]-->
+        
+        <script src="/merchantv2/Styles/js/bootstrap/js/bootstrap.min.js"></script>
+        <script src="/merchantv2/Styles/js/bs-hover-dropdown/bootstrap-hover-dropdown.min.js"></script>
+        <script src="/merchantv2/Styles/js/perfect-scrollbar/jquery.mousewheel.js"></script>
+        <script src="/merchantv2/Styles/js/perfect-scrollbar/perfect-scrollbar.js"></script>
+        <script src="/merchantv2/Styles/js/jquery-cookie/jquery.cookie.js"></script>
+        <script src="/merchantv2/Styles/js/main.js"></script>
+        <script src="/merchantv2/Styles/js/bs-modal/js/bootstrap-modal.js"></script>
+        <script src="/merchantv2/Styles/js/bs-modal/js/bootstrap-modalmanager.js"></script>
+        <script src="/merchantv2/Styles/js/ui-modals.js"></script>
+        <script src="/merchantv2/Styles/js/jquery-validation/jquery.validate.min.js"></script>
+        <script src="/merchantv2/Styles/js/iCheck/jquery.icheck.min.js"></script>
+        
+        <script src="/merchantv2/Styles/js/select2/select2.min.js"></script>
+
+        <script type="text/javascript">
+            $('.search-select').select2({
+                allowClear: true
+            });
+            $('.go-top').on('click', function (e) {
+                $("html, body").animate({
+                    scrollTop: 0
+                }, "slow");
+                e.preventDefault();
+            });
+            $('.navigation-toggler').on('click', function () {
+                if (!$('body').hasClass('navigation-small')) {
+                    $('body').addClass('navigation-small');
+                } else {
+                    $('body').removeClass('navigation-small');
+                };
+            });
+            $("li.dropdown.current-user").on('click', function () {
+                $('div.main-navigation.navbar-collapse').removeClass('active open collapse in').addClass('collapse');
+            });
+            $("button.navbar-toggle").on('click', function () {
+
+                if (!$('li.dropdown.current-user').hasClass('open')) {
+
+                    $('li.dropdown.current-user').removeClass('open');
+                    $('div.main-navigation.navbar-collapse').removeClass('collapse');
+                }
+            });
+        </script>
+        <script type="text/javascript">
+            $(document).ready(function () {
+                $('#publicinfo').click(function () {
+                    $('div#tabs_cont2').removeClass('hide');
+                    $('div#tabs_cont2').addClass('active');
+                });
+
+                $('li a, a.showloading').click(function (e) {
+                    var url = $(this).attr("href");//.match(/^http(s?):\/\/(.*)/);
+                    var target = $(this).attr("target");
+                    
+                    if (url !== undefined && url !== null && !url.startsWith('#') && target !== '_blank')
+                        $('#loading').show();
+                });
+                $('a.btn-export').click(function (e) {
+                    jsShowHideProgress();
+                });
+                function jsShowHideProgress() {
+                    setTimeout(function () {
+                        $('#loading').show();
+                    }, 200);
+                    deleteCookie();
+
+                    var timeInterval = 500; // milliseconds (checks the cookie for every half second )
+
+                    var loop = setInterval(function () {
+                        if (isCookieValid()) {
+                            $('#loading').fadeOut("slow");
+                            clearInterval(loop);
+                        }
+
+                    }, timeInterval);
+                }
+
+                // cookies
+                function deleteCookie() {
+                    var cook = getCookie('ExcelDownloadFlag');
+                    if (cook !== "") {
+                        document.cookie = "ExcelDownloadFlag=; Path = /; expires=Thu, 01 Jan 1970 00:00:00 UTC";
+                    }
+                }
+
+                function isCookieValid() {
+                    var cook = getCookie('ExcelDownloadFlag');
+                    return cook !== '';
+                }
+
+                function getCookie(cname) {
+                    var name = cname + "=";
+                    var ca = document.cookie.split(';');
+                    for (var i = 0; i < ca.length; i++) {
+                        var c = ca[i];
+                        while (c.charAt(0) === ' ') {
+                            c = c.substring(1);
+                        }
+                        if (c.indexOf(name) === 0) {
+                            return c.substring(name.length, c.length);
+                        }
+                    }
+                    return "";
+                }
+            });
+            $(window).on('load', function () {
+                $("#loading").delay(400).fadeOut('slow');
+            });
+        </script>
+
+        <script type="text/javascript">
+            $('a').parent().removeClass('active open');
+            var ul = $(location).attr('pathname');
+            $("a[href='" + ul + "']").parent().addClass("active open");
+        </script>
+
+        <script type="text/javascript">
+            $(document).ready(function () {
+                $('#btngeneral').addClass("active");
+                $('#btntabs_cont1').addClass("active");
+
+                idleTime = 1;
+                var idleInterval = setInterval(timerIncrement, 60000);
+
+                function timerIncrement() {
+                    idleTime++;
+                    if (idleTime > 15) {
+                        doPreload();
+                    }
+                }
+
+                function doPreload() {
+                    window.location.href = '/merchantv2/Users/Logout.htm';
+                }
+
+                $('input').keydown(function (e) {
+                    idleTime = 1;
+                });
+                $('a').mousedown(function (e) {
+                    idleTime = 1;
+                });
+                $('.date-picker').mousedown(function (e) {
+                    idleTime = 1;
+                });
+            });
+        </script>
+
+        
+<script type="text/javascript">
+            $(document).ready(function () {
+                $('#terminalEdit').validate({
+                    rules: {
+                        ipnUrl: 'required',
+                        callType: 'required',
+                        hashType: 'required'
+                        //secretkey: 'required'
+                    },
+                    messages: {
+                        ipnUrl: 'Bắt buộc nhập thông tin IPN',
+                        callType: 'Bắt buộc nhập thông tin Giao thức',
+                        hashType: 'Bắt buộc nhập thông tin Kiểu  mã hóa'
+                        //secretkey: 'Bắt buộc nhập thông tin Secret key'
+                    }
+                });
+
+                $('#btnSave').click(function () {
+                    if ($('#terminalEdit').valid()) {
+                        $('#terminalEdit').submit();
+                    }
+                });
+
+                
+
+                $('#ipnUrl').change(function() {
+                    var ipnUrl = $('#ipnUrl').val();
+                    if (ipnUrl != null && ipnUrl.length > 0) {
+                        if (ipnUrl.length <= 7) {
+                            $('#ipnUrl').val("http://" + ipnUrl);
+                        } else if (!ipnUrl.startsWith("http://") && !ipnUrl.startsWith("https://")) {
+                            $('#ipnUrl').val("http://" + ipnUrl);
+                        }
+                    }
+                });
+                
+                $('#testIpn').click(function () {
+                    $('#loading').show();
+                    var data = $('#terminalEdit').serialize();
+                    $.ajax({
+                        type: "POST",
+                        data: data,
+                        url: '/merchantv2/Account/TestCallIpn.htm',
+                        success: function (data) {
+                            $('#error').removeClass('hidden');
+                            $('#error').text(data);
+                            $('#loading').hide();
+                        }
+                    })
+                })
+            });
+</script>
+
+
+        <script>
+            $(document).ready(function () {
+                $('.main-navigation-menu > li a').on('click', function () {
+                    if ($(this).parent().children('ul').hasClass('sub-menu') && ((!$('body').hasClass('navigation-small') || $windowWidth < 767) || !$(this).parent().parent().hasClass('main-navigation-menu'))) {
+                        if (!$(this).parent().hasClass('open')) {
+                            $(this).parent().addClass('open');
+                            $(this).parent().parent().children('li.open').not($(this).parent()).not($('.main-navigation-menu > li.active')).removeClass('open').children('ul').slideUp(200);
+                            $(this).parent().children('ul').slideDown(200, function () {
+                                // runContainerHeight();
+                            });
+                        } else {
+                            if (!$(this).parent().hasClass('active')) {
+                                $(this).parent().parent().children('li.open').not($('.main-navigation-menu > li.active')).removeClass('open').children('ul').slideUp(200, function () {
+                                    //  runContainerHeight();
+                                });
+                            } else {
+                                $(this).parent().parent().children('li.open').removeClass('open').children('ul').slideUp(200, function () {
+                                    //  runContainerHeight();
+                                });
+                            }
+                        }
+                    }
+                });
+                //Set menu active
+                $('.main-navigation-menu > li a').parent().removeClass('active open');
+                var url = $(location).attr('pathname');
+                $(".main-navigation-menu > li a[href='" + url + "']").parent().addClass("active open");
+                $(".main-navigation-menu > li a[href='" + url + "']").parent().parent().parent().addClass("active open");
+                $(".main-navigation-menu > li a[href='" + url + "']").parent().parent().parent().parent().parent().addClass("active open");
+
+                //fix set no cache in Safari
+                window.onpageshow = function (event) {
+                    if (event.persisted) {
+                        window.location.reload();
+                    }
+                };
+            });
+        </script>
+        
+    
+    
+</body><!-- end: BODY --></html>
