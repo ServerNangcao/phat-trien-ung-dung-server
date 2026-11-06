@@ -24,7 +24,8 @@ public class OrderApiTests
         Guid.NewGuid(),
         new[] { new ReservationItemDto(Guid.NewGuid(), "VIP", 2, 125_000m) },
         DateTime.UtcNow.AddMinutes(10), // the app under test uses the real clock
-        isActive);
+        isActive,
+        "fan@example.com");
 
     [Fact]
     public async Task CreateOrder_ReturnsOrderIdAndSignedPaymentUrl()
@@ -265,6 +266,12 @@ public class OrderApiTests
         var outbox = await db.OutboxMessages.ToListAsync();
         outbox.Should().ContainSingle(m => m.Type.Contains(nameof(OrderPaidAfterExpiryIntegrationEvent)));
         outbox.Should().NotContain(m => m.Type.Contains(nameof(OrderPaidIntegrationEvent))); // tickets must never be issued
+
+        // The refund-notification payload carries a dedupe EventId and the customer email.
+        var latePayment = outbox.Single(m => m.Type.Contains(nameof(OrderPaidAfterExpiryIntegrationEvent)));
+        var latePaymentJson = JsonDocument.Parse(latePayment.Content).RootElement;
+        latePaymentJson.GetProperty("eventId").GetGuid().Should().NotBe(Guid.Empty);
+        latePaymentJson.GetProperty("customerEmail").GetString().Should().Be("fan@example.com");
     }
 
     [Fact]
@@ -297,6 +304,10 @@ public class OrderApiTests
         refund.ProcessedNote.Should().Be("Approved after verification"); // admin audit note persisted
         var outbox = await db.OutboxMessages.ToListAsync();
         outbox.Should().Contain(m => m.Type.Contains(nameof(RefundProcessedIntegrationEvent)));
+        var refundEvent = outbox.Single(m => m.Type.Contains(nameof(RefundProcessedIntegrationEvent)));
+        var refundEventJson = JsonDocument.Parse(refundEvent.Content).RootElement;
+        refundEventJson.GetProperty("eventId").GetGuid().Should().NotBe(Guid.Empty);
+        refundEventJson.GetProperty("customerEmail").GetString().Should().Be("fan@example.com");
     }
 
     [Fact]
@@ -409,5 +420,299 @@ public class OrderApiTests
         var attendees = await response.Content.ReadFromJsonAsync<JsonElement>();
         attendees.GetArrayLength().Should().Be(1);
         attendees[0].GetProperty("orderId").GetGuid().Should().Be(paid.GetProperty("orderId").GetGuid());
+    }
+
+    [Fact]
+    public async Task GetEventSalesSummary_CountsPaidOrdersOnlyWithPerTypeBreakdown()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var paidReservation = ValidReservation(); // 2 × VIP @125,000 = 250,000
+        var pendingReservation = ValidReservation();
+        var refundedReservation = ValidReservation();
+        var otherEventReservation = ValidReservation();
+        foreach (var r in new[] { paidReservation, pendingReservation, refundedReservation, otherEventReservation })
+            factory.Ticketing.AddReservation(r);
+
+        var paid = await CreateAndPayAsync(client, paidReservation);
+        var pending = await CreateOrderAsync(client, pendingReservation); // stays Pending → excluded
+        var refunded = await CreateAndPayAsync(client, refundedReservation); // refunded money is not revenue
+        await CreateAndPayAsync(client, otherEventReservation); // different event → excluded
+
+        await client.PostAsJsonAsync($"/api/orders/{refunded.GetProperty("orderId").GetGuid()}/refund", new { reason = "changed mind" });
+        var refunds = await client.GetAsync("/api/orders/refunds?status=Pending");
+        var refundList = await refunds.Content.ReadFromJsonAsync<JsonElement>();
+        var refundId = refundList[0].GetProperty("id").GetGuid();
+        await client.PostAsJsonAsync($"/api/orders/refunds/{refundId}/process", new { approve = true, adminNote = "ok" });
+
+        var eventId = paidReservation.EventId;
+        var response = await client.GetAsync($"/api/orders/events/{eventId}/sales-summary");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var summary = await response.Content.ReadFromJsonAsync<JsonElement>();
+        summary.GetProperty("eventId").GetGuid().Should().Be(eventId);
+        summary.GetProperty("totalRevenue").GetDecimal().Should().Be(250_000m);
+        summary.GetProperty("paidOrderCount").GetInt32().Should().Be(1);
+        var byType = summary.GetProperty("byTicketType");
+        byType.GetArrayLength().Should().Be(1);
+        byType[0].GetProperty("ticketTypeId").GetGuid().Should().Be(paidReservation.Items[0].TicketTypeId);
+        byType[0].GetProperty("ticketTypeName").GetString().Should().Be("VIP");
+        byType[0].GetProperty("ticketsSold").GetInt32().Should().Be(2);
+        byType[0].GetProperty("revenue").GetDecimal().Should().Be(250_000m);
+        pending.GetProperty("orderId").GetGuid().Should().NotBe(Guid.Empty); // keep pending order referenced
+    }
+
+    private static async Task<JsonElement> CreateOrderAsync(HttpClient client, ReservationDto reservation)
+    {
+        var response = await client.PostAsJsonAsync("/api/orders", new { customerId = CustomerId, reservationId = reservation.ReservationId });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    private static async Task<JsonElement> CreateAndPayAsync(HttpClient client, ReservationDto reservation)
+    {
+        var order = await CreateOrderAsync(client, reservation);
+        var ipn = await client.PostAsync(
+            $"/api/payments/vnpay/ipn?{VnPayTestHelper.BuildIpnQuery(order.GetProperty("orderId").GetGuid(), order.GetProperty("totalAmount").GetDecimal())}", null);
+        ipn.StatusCode.Should().Be(HttpStatusCode.OK);
+        return order;
+    }
+
+    [Fact]
+    public async Task ExportEventAttendees_ReturnsCsvOfPaidOrdersOnly()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var paidReservation = ValidReservation();
+        var pendingReservation = ValidReservation();
+        factory.Ticketing.AddReservation(paidReservation);
+        factory.Ticketing.AddReservation(pendingReservation);
+
+        var paid = await CreateAndPayAsync(client, paidReservation);
+        await CreateOrderAsync(client, pendingReservation);
+
+        var eventId = paidReservation.EventId;
+        var ticketId = Guid.NewGuid();
+        factory.Ticketing.SetTickets(eventId, new[]
+        {
+            new TicketDto(ticketId, paid.GetProperty("orderId").GetGuid(), CustomerId, Guid.NewGuid(), "VIP", "Issued", Now.AddMinutes(6)),
+            new TicketDto(Guid.NewGuid(), Guid.NewGuid(), CustomerId, Guid.NewGuid(), "VIP", "Issued", Now) // unknown order → filtered out
+        });
+
+        var response = await client.GetAsync($"/api/orders/events/{eventId}/attendees/export");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("text/csv");
+        response.Content.Headers.ContentDisposition!.FileName.Should().NotBeNullOrWhiteSpace();
+        var csv = await response.Content.ReadAsStringAsync();
+        csv.Should().StartWith("TicketId,OrderId,CustomerId,TicketTypeId,TicketType,Status,IssuedAtUtc");
+        csv.Should().Contain(ticketId.ToString());
+        csv.Should().Contain("VIP");
+        csv.Should().NotContain(paid.GetProperty("orderId").GetGuid() + ",,"); // no empty-customer artifact rows
+    }
+
+    [Fact]
+    public async Task ExportEventOrders_ReturnsCsvWithEveryOrderState()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var paidReservation = ValidReservation();
+        var pendingReservation = ValidReservation() with { EventId = paidReservation.EventId };
+        factory.Ticketing.AddReservation(paidReservation);
+        factory.Ticketing.AddReservation(pendingReservation);
+
+        var paid = await CreateAndPayAsync(client, paidReservation);
+        var pending = await CreateOrderAsync(client, pendingReservation);
+        var eventId = paidReservation.EventId;
+
+        var response = await client.GetAsync($"/api/orders/events/{eventId}/orders/export");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var csv = await response.Content.ReadAsStringAsync();
+        csv.Should().StartWith("OrderId,CustomerId,ReservationId,TotalAmount,Status,CreatedAt,Items");
+        csv.Should().Contain(paid.GetProperty("orderId").GetGuid().ToString()).And.Contain("Paid");
+        csv.Should().Contain(pending.GetProperty("orderId").GetGuid().ToString()).And.Contain("Pending");
+        csv.Should().Contain("VIP x2");
+    }
+
+    [Fact]
+    public async Task DiscountFlow_CreateCodeThenOrder_ReducesTotalAndPaymentUrlAmount()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation(); // 2 × 125,000 = 250,000
+        factory.Ticketing.AddReservation(reservation);
+
+        var created = await client.PostAsJsonAsync("/api/orders/discounts",
+            new { code = "event10", type = "Percentage", value = 10m, maxRedemptions = (int?)null, expiresAtUtc = (DateTime?)null });
+        created.StatusCode.Should().Be(HttpStatusCode.OK);
+        var code = await created.Content.ReadFromJsonAsync<JsonElement>();
+        code.GetProperty("code").GetString().Should().Be("EVENT10"); // stored normalized
+
+        var duplicated = await client.PostAsJsonAsync("/api/orders/discounts",
+            new { code = "event10", type = "Percentage", value = 10m, maxRedemptions = (int?)null, expiresAtUtc = (DateTime?)null });
+        duplicated.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var order = await CreateOrderWithDiscountAsync(client, reservation, "event10");
+
+        order.GetProperty("discountAmount").GetDecimal().Should().Be(25_000m);
+        order.GetProperty("totalAmount").GetDecimal().Should().Be(225_000m);
+        order.GetProperty("paymentUrl").GetString()!.Should().Contain("vnp_Amount=22500000"); // gateway sees the payable total
+
+        var unknownReservation = ValidReservation();
+        factory.Ticketing.AddReservation(unknownReservation);
+        var unknown = await client.PostAsJsonAsync("/api/orders", new { customerId = CustomerId, reservationId = unknownReservation.ReservationId, discountCode = "GHOST" });
+        unknown.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task MoMoIpn_WithValidSignature_MarksPaidAndIsIdempotent()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var order = await CreateOrderAsync(client, reservation);
+        var orderId = order.GetProperty("orderId").GetGuid();
+
+        var ipn = MoMoIpnPayload(orderId, order.GetProperty("totalAmount").GetDecimal());
+        var first = await client.PostAsJsonAsync("/api/payments/momo/ipn", ipn);
+        var second = await client.PostAsJsonAsync("/api/payments/momo/ipn", ipn);
+
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        first.Content.Headers.ContentType!.MediaType.Should().Be("application/json");
+        (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("resultCode").GetInt32().Should().Be(0);
+        second.StatusCode.Should().Be(HttpStatusCode.OK); // replay: still acknowledged, no state change
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Paid);
+    }
+
+    [Fact]
+    public async Task MoMoIpn_WithTamperedSignature_Returns400AndKeepsOrderPending()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var order = await CreateOrderAsync(client, reservation);
+        var orderId = order.GetProperty("orderId").GetGuid();
+
+        var ipn = MoMoIpnPayload(orderId, order.GetProperty("totalAmount").GetDecimal());
+        ipn["amount"] = "1"; // tamper after signing
+
+        var response = await client.PostAsJsonAsync("/api/payments/momo/ipn", ipn);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Pending);
+    }
+
+    [Fact]
+    public async Task MoMoIpn_WithFailedResultCode_DoesNotChangeOrderState()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var order = await CreateOrderAsync(client, reservation);
+        var orderId = order.GetProperty("orderId").GetGuid();
+
+        var ipn = MoMoIpnPayload(orderId, order.GetProperty("totalAmount").GetDecimal(), resultCode: "7002");
+
+        var response = await client.PostAsJsonAsync("/api/payments/momo/ipn", ipn);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Cancel_PendingOrder_MarksCancelledAndReleasesReservation()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var order = await CreateOrderAsync(client, reservation);
+        var orderId = order.GetProperty("orderId").GetGuid();
+
+        var cancelled = await client.PostAsJsonAsync($"/api/orders/{orderId}/cancel", new { });
+
+        cancelled.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await cancelled.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("status").GetString().Should().Be("Cancelled");
+        factory.Ticketing.CancelledReservations.Should().Contain(reservation.ReservationId);
+
+        // A late IPN for the cancelled order replays idempotently without resurrecting it.
+        var ipn = await client.PostAsync($"/api/payments/vnpay/ipn?{VnPayTestHelper.BuildIpnQuery(orderId, order.GetProperty("totalAmount").GetDecimal())}", null);
+        ipn.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Cancelled);
+    }
+
+    [Fact]
+    public async Task Cancel_PaidOrder_Returns400()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        var order = await CreateAndPayAsync(client, reservation);
+        var orderId = order.GetProperty("orderId").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/api/orders/{orderId}/cancel", new { });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Cancel_WhenReservationReleaseFails_StillCancelsOrder()
+    {
+        using var factory = new OrdersApiFactory();
+        var client = factory.CreateClient();
+        var reservation = ValidReservation();
+        factory.Ticketing.AddReservation(reservation);
+        factory.Ticketing.SimulateCancelFailure = true;
+        var order = await CreateOrderAsync(client, reservation);
+        var orderId = order.GetProperty("orderId").GetGuid();
+
+        var response = await client.PostAsJsonAsync($"/api/orders/{orderId}/cancel", new { });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK); // cancellation must not fail on release outage
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<OrdersDbContext>();
+        (await db.Orders.FirstAsync(o => o.Id == orderId)).Status.Should().Be(OrderStatus.Cancelled);
+    }
+
+    private static Dictionary<string, string?> MoMoIpnPayload(Guid orderId, decimal amount, string resultCode = "0")
+    {
+        var ipn = new Dictionary<string, string?>
+        {
+            ["partnerCode"] = MoMoTestHelper.PartnerCode,
+            ["orderId"] = orderId.ToString(),
+            ["requestId"] = $"req-{Guid.NewGuid():N}",
+            ["amount"] = amount.ToString("0", System.Globalization.CultureInfo.InvariantCulture),
+            ["transId"] = "998877",
+            ["payType"] = "web",
+            ["orderInfo"] = $"Ticketing order {orderId}",
+            ["message"] = "Success",
+            ["responseTime"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(),
+            ["resultCode"] = resultCode,
+            ["extraData"] = "",
+            ["signature"] = ""
+        };
+        ipn["signature"] = MoMoTestHelper.SignIpn(ipn);
+        return ipn;
+    }
+
+    private static async Task<JsonElement> CreateOrderWithDiscountAsync(HttpClient client, ReservationDto reservation, string code)
+    {
+        var response = await client.PostAsJsonAsync("/api/orders", new { customerId = CustomerId, reservationId = reservation.ReservationId, discountCode = code });
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
 }

@@ -17,6 +17,11 @@ public sealed class FakeTicketingModuleApi : ITicketingModuleApi
     /// <summary>When set, every lookup fails with a transient internal error (module outage).</summary>
     public bool SimulateOutage { get; set; }
 
+    /// <summary>When set, reservation cancellation fails (simulates a Ticketing outage).</summary>
+    public bool SimulateCancelFailure { get; set; }
+
+    public List<Guid> CancelledReservations { get; } = new();
+
     public void AddReservation(ReservationDto reservation) => _reservations[reservation.ReservationId] = reservation;
 
     public void SetTickets(Guid eventId, IReadOnlyList<TicketDto> tickets) => _ticketsByEvent[eventId] = tickets;
@@ -25,8 +30,10 @@ public sealed class FakeTicketingModuleApi : ITicketingModuleApi
     {
         _reservations.Clear();
         _ticketsByEvent.Clear();
+        CancelledReservations.Clear();
         ReservationLookups = 0;
         SimulateOutage = false;
+        SimulateCancelFailure = false;
     }
 
     public Task<Result<ReservationDto>> GetReservationAsync(Guid reservationId, CancellationToken cancellationToken = default)
@@ -45,5 +52,14 @@ public sealed class FakeTicketingModuleApi : ITicketingModuleApi
         return Task.FromResult(_ticketsByEvent.TryGetValue(eventId, out var tickets)
             ? Result<IReadOnlyList<TicketDto>>.Success(tickets)
             : Result<IReadOnlyList<TicketDto>>.Failure(Error.NotFound("No tickets for event.")));
+    }
+
+    public Task<Result> CancelReservationAsync(Guid reservationId, CancellationToken cancellationToken = default)
+    {
+        if (SimulateCancelFailure)
+            return Task.FromResult(Result.Failure(Error.Internal("Ticketing module unreachable: connection refused")));
+
+        CancelledReservations.Add(reservationId);
+        return Task.FromResult(Result.Success());
     }
 }

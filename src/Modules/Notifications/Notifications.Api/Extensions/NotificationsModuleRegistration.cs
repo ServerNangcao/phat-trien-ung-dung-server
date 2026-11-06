@@ -22,7 +22,10 @@ public static class NotificationsModuleRegistration
         services.AddScoped<IEmailRepository, EmailRepository>();
         services.AddScoped<IInbox, InboxRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<EmailDispatcher>();
+        services.AddScoped<IEmailDispatcher>(sp => sp.GetRequiredService<EmailDispatcher>());
         services.AddScoped<TicketEmailProcessor>();
+        services.AddScoped<RefundEmailProcessor>();
         services.AddScoped<EmailRetryProcessor>();
         services.Configure<SmtpOptions>(configuration.GetSection("Smtp"));
         services.AddScoped<IEmailService, SmtpEmailService>();

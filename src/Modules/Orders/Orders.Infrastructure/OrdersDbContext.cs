@@ -13,6 +13,7 @@ public sealed class OrdersDbContext : BaseDbContext
 
     public DbSet<Order> Orders => Set<Order>();
     public DbSet<RefundRequest> RefundRequests => Set<RefundRequest>();
+    public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -33,7 +34,9 @@ public sealed class OrdersDbContext : BaseDbContext
             builder.Property(o => o.TotalAmount).HasColumnType("decimal(18,2)");
             builder.Property(o => o.Status).HasConversion<string>();
             builder.Property(o => o.CustomerId).IsRequired();
+            builder.Property(o => o.CustomerEmail).HasMaxLength(320);
             builder.Property(o => o.ReservationId).IsRequired();
+            builder.Property(o => o.EventId).IsRequired();
             builder.Property(o => o.CreatedAt).IsRequired();
             builder.Property(o => o.UpdatedAt).IsRequired();
             builder.Ignore(o => o.DomainEvents);
@@ -43,10 +46,12 @@ public sealed class OrdersDbContext : BaseDbContext
                 itemBuilder.Property(i => i.TicketTypeId).IsRequired();
                 itemBuilder.Property(i => i.Quantity).IsRequired();
                 itemBuilder.Property(i => i.Price).HasColumnType("decimal(18,2)").IsRequired();
+                itemBuilder.Property(i => i.TicketTypeName).HasMaxLength(200);
             });
 
             builder.HasIndex(o => o.CustomerId);
             builder.HasIndex(o => o.ReservationId).IsUnique();
+            builder.HasIndex(o => o.EventId);
 
             // Postgres xmin as a concurrency token: two concurrent IPNs for the same order
             // cannot both pass the Pending check and commit; the loser retries via VNPay.
@@ -67,7 +72,28 @@ public sealed class OrdersDbContext : BaseDbContext
                 .HasForeignKey(r => r.OrderId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+            // One order yields at most one refund request: a customer retry or a
+            // concurrent RequestRefundCommand loses the unique-index race instead of
+            // creating a phantom second row (Layer 1 + Layer 3).
+            builder.HasIndex(r => r.OrderId).IsUnique();
+
+            // Postgres xmin concurrency token, mirroring Order: two concurrent
+            // ProcessRefundCommand calls cannot both observe RefundStatus.Pending.
+            builder.Property<uint>("xmin").IsRowVersion();
+
             builder.HasIndex(r => r.Status);
+        });
+
+        modelBuilder.Entity<DiscountCode>(builder =>
+        {
+            builder.HasKey(d => d.Id);
+            builder.Property(d => d.Code).IsRequired().HasMaxLength(50);
+            builder.Property(d => d.Type).HasConversion<string>();
+            builder.Property(d => d.Value).HasColumnType("decimal(18,2)").IsRequired();
+            builder.Property(d => d.TimesUsed).IsRequired();
+            builder.Property(d => d.IsActive).IsRequired();
+
+            builder.HasIndex(d => d.Code).IsUnique();
         });
 
         modelBuilder.Entity<OutboxMessage>(builder =>

@@ -17,8 +17,8 @@ dotnet run --project src/Modules/Orders/Orders.Api -- --Persistence:Provider=InM
 node scripts/mock-ticketing.js   # serves GET /api/ticketing/reservations/{id} and /events/{id}/tickets on :5003
 ```
 
-Tests: `dotnet test` — 78 tests (75 pass; 3 Testcontainers Postgres tests skip when
-Docker is absent and run in CI with Docker).
+Tests: `dotnet test` — 115 tests (112 run green locally; 3 Testcontainers Postgres tests
+skip when Docker is absent and run in CI with Docker).
 
 UI E2E: `cd backend/admin-ui && npm run test:e2e` — Playwright boots the full stack
 (Orders.Api on InMemory, mock Ticketing, built UI preview), seeds data through the real
@@ -53,6 +53,34 @@ Playwright Chromium once (`npx playwright install chromium`).
 6. Queries: `GET /api/orders/customer/{customerId}` (FR-13), `GET /api/orders/{id}`,
    `GET /api/orders/events/{eventId}/attendees` (FR-22 — joins Ticketing's issued
    tickets with paid orders only).
+7. FR-22 file export: `GET /api/orders/events/{eventId}/attendees/export` and
+   `GET /api/orders/events/{eventId}/orders/export` return RFC 4180 CSV with a UTF-8 BOM
+   (opens correctly in Excel). The orders export lists every state, joined with item labels.
+8. FR-23 revenue summary: `GET /api/orders/events/{eventId}/sales-summary` returns
+   `{eventId, totalRevenue, paidOrderCount, byTicketType[]}`. The same data ships as the
+   module's public contract `Orders.Contracts.IOrdersModuleApi.GetSalesSummaryAsync`
+   (registered in-process by `AddOrdersModule`) so the Events module's dashboard calls it
+   without touching the orders schema (PDF §3.3e). Revenue counts Paid orders only —
+   refunded and PaidAfterExpiry money goes back to the customer.
+9. FR-16 discount codes: `POST /api/orders/discounts` (Organizer/Admin via TV1's host
+   policy) creates `{code, type: Percentage|FixedVnd, value, maxRedemptions, expiresAtUtc}`;
+   codes are stored normalized (trimmed, upper-invariant, unique index). `POST /api/orders`
+   accepts an optional `discountCode`; it is validated server-side and reduces the payable
+   total (`discountAmount` in the response and on the order). The redemption count commits
+   in the same transaction as the order, so a rolled-back order never consumes a redemption.
+10. FR-16 MoMo wallet: `POST /api/payments/momo/create` returns the hosted payment URL
+    (HMAC-SHA256 over the documented v2 field order); `POST /api/payments/momo/ipn`
+    verifies the signature and flows through the same shared payment state machine as
+    VNPay (`CompleteOrderPaymentCommand`): idempotent replay, amount cross-check,
+    ADR-0003 late-payment handling. MoMo credentials are validated lazily on first use
+    (an unconfigured gateway answers 503 naming the missing keys), so the VNPay flow and
+    all tests run without MoMo config. Sandbox credentials are pending (same state as
+    VNPay before the setup wizard ran).
+11. FR-16 cancel order: `POST /api/orders/{id}/cancel` cancels a Pending order and
+    releases the reservation through a new `ITicketingModuleApi.CancelReservationAsync`
+    port (consumer-driven contract route: PUT `api/ticketing/reservations/{id}/cancel`).
+    The release is best-effort: when Ticketing is unreachable the cancellation still
+    succeeds and the reservation's 10-minute TTL returns the stock anyway.
 
 ## Flow (Notifications)
 
@@ -62,27 +90,48 @@ Playwright Chromium once (`npx playwright install chromium`).
    them atomically, so a crash after the 202 ack is recovered by the retry worker
    (Pending sweep) instead of losing the email. A redelivered event is answered with
    `{duplicated: true}` and never sends twice.
-2. `TicketEmailProcessor` owns the single send lifecycle: renders the HTML template
-   (event fields HTML-encoded), includes an invoice table when the event carries
-   pricing (`TotalAmount` + `Items`; omitted for older payloads), embeds the QR
-   (`QrCodeUrl` from Ticketing, or a locally generated data-URI fallback via QRCoder),
-   and marks Sent / Failed + backoff.
-3. Delivery budget < 30s: `SmtpEmailService` retries transient failures 3× (2s/4s
+2. `TicketEmailProcessor` renders the HTML template (event fields HTML-encoded),
+   includes an invoice table when the event carries pricing (`TotalAmount` + `Items`;
+   omitted for older payloads), embeds the QR (`QrCodeUrl` from Ticketing, or a locally
+   generated data-URI fallback via QRCoder).
+3. The send lifecycle lives once in `EmailDispatcher` (send → Sent, or Failed + linear
+   backoff): first-attempt delivery, both processors, and the retry worker all go through
+   it, so the paths cannot drift apart.
+4. Refund emails (UC-ORD-02): Orders now publishes `OrderPaidAfterExpiryIntegrationEvent`
+   and `RefundProcessedIntegrationEvent` (each carrying a dedupe `EventId` and the
+   customer's email, denormalized from the reservation at order creation). Notifications
+   consumes them at `POST /api/integration-events/order-paid-after-expiry` (apology +
+   automatic refund request confirmation, ADR-0003 / UC-ORD-02 step 6) and
+   `POST /api/integration-events/refund-processed` ("money is on its way back"), both
+   through `RefundEmailProcessor` with the same Inbox crash-safety contract. Orders'
+   appsettings fans both events out to Ticketing (:5003) and Notifications (:5002).
+   An event whose payload has no usable recipient is consumed (Inbox row commits) but
+   sends nothing — never silently dropped from the Inbox.
+5. Delivery budget < 30s: `SmtpEmailService` retries transient failures 3× (2s/4s
    backoff, 8s hard bound per attempt — worst case ≈ 30s); `EmailRetryProcessor`
    (10s worker) retries failed sends at 10s..60s backoff up to 5 attempts and recovers
    Pending emails abandoned by a crash after 30s.
-4. `GET /api/notifications/order/{orderId}` exposes history and status.
+6. `GET /api/notifications/order/{orderId}` exposes history and status.
 
 ## Verification evidence
 
 - `dotnet build`: 0 warnings / 0 errors (TreatWarningsAsErrors, nullable enabled).
-- `dotnet test`: 64 tests — 64 run green (41 + 23), 3 Testcontainers tests skip without
-  Docker. The suite caught two real bugs that were fixed:
+- `dotnet test`: 115 tests — 112 run green (75 Orders + 37 Notifications), 3
+  Testcontainers tests skip without Docker. The suite caught three real bugs that were
+  fixed:
   1. Outbox payloads serialized as `{}` (STJ used the `IIntegrationEvent` marker's
      metadata instead of the runtime type).
   2. Refund approval required `Paid` state, but a requested refund puts the order in
      `RefundRequested`; `Refunded` is now reachable from `RefundRequested` and
      `PaidAfterExpiry`.
+  3. **Pre-existing regression found while extending the suite (2026-11-06):** 9 WAF
+     endpoint tests failed at HEAD on this machine only. Root cause: `e1ab9ce` added
+     `UserSecretsId` to Orders.Api, and this machine's user-secrets store holds the real
+     sandbox VNPay credentials; `WebApplicationFactory` runs in Development, user-secrets
+     override the demo appsettings, and every test-signed IPN failed signature
+     verification (RspCode 97). CI stayed green because it has no secrets store. Fix:
+     the test host is now hermetic — `UseEnvironment("Testing")` (user-secrets never
+     load) plus explicit credential pins in `OrdersApiFactory`.
 - Live end-to-end run (InMemory + mock Ticketing on :5003): create → signed sandbox URL
   → IPN `rspCode 00` + order `Paid` → refund request → admin approve → order `Refunded`;
   tampered-amount IPN rejected 400 with a valid HMAC over the tampered payload (the
@@ -170,8 +219,17 @@ TV1's host concern (policies listed above).
 - **VNPay refund API is restricted in sandbox** (reference-library docs): the gateway
   refund call is deliberately left to the payments side via
   `RefundProcessedIntegrationEvent`, so the sandbox flow completes without it.
+- **MoMo sandbox credentials are pending** (same state VNPay was in before the setup
+  wizard ran). The adapter, signing scheme, IPN handling and state machine are complete
+  and unit-tested against the documented v2 spec; `POST /api/payments/momo/create`
+  answers 503 naming the missing `Payment:MoMo` keys until `PartnerCode/AccessKey/
+  SecretKey` are configured. Register a sandbox app at https://developers.momo.vn and
+  fill the config (user-secrets recommended) to go live.
 - The Ticketing HTTP routes in `HttpTicketingModuleApi` are a consumer-driven contract;
   when TV4 ships Tickets.Contracts, the adapter is the only file that may need mapping.
+  New consumer-driven routes added this round: `PUT api/ticketing/reservations/{id}/cancel`
+  (FR-16 cancel order) and `customerEmail` on the reservation payload (drives the refund
+  emails; empty falls back to no email).
 - TV1's central outbox worker (FOR UPDATE SKIP LOCKED) is not part of this delivery;
   the module-local delivery service covers local development (enable only one of them)
   and the table/format are ready for the central worker.
@@ -193,8 +251,17 @@ host middleware enforce JWT + roles. When wiring the modules into the host, appl
 | `GET /api/orders/refunds` | Admin |
 | `POST /api/orders/refunds/{id}/process` | Admin |
 | `GET /api/orders/events/{eventId}/attendees` | Organizer owning the event, or Staff |
+| `GET /api/orders/events/{eventId}/attendees/export` | Organizer owning the event, or Staff |
+| `GET /api/orders/events/{eventId}/orders/export` | Organizer owning the event, or Staff |
+| `GET /api/orders/events/{eventId}/sales-summary` | Organizer owning the event, or Staff |
+| `POST /api/orders/discounts` | Organizer (own events) or Admin |
+| `POST /api/orders/{id}/cancel` | Authenticated Customer owning the order |
+| `POST /api/payments/momo/create` | Authenticated Customer owning the order |
+| `POST /api/payments/momo/ipn` | Anonymous by design (gateway callback; HMAC signature is the auth) |
 | `POST /api/payments/vnpay/ipn` | Anonymous by design (gateway callback; HMAC signature is the auth) |
 | `GET /api/payments/vnpay/return` | Anonymous by design (browser redirect; signature verified) |
 | `POST /api/notifications/send` | Internal service only (service token / network-restricted) |
 | `POST /api/integration-events/ticket-issued` | Internal modules only (service token; Inbox dedupes by EventId) |
+| `POST /api/integration-events/order-paid-after-expiry` | Internal modules only (service token; Inbox dedupes by EventId) |
+| `POST /api/integration-events/refund-processed` | Internal modules only (service token; Inbox dedupes by EventId) |
 | `GET /api/notifications/order/{orderId}` | Authenticated Customer owning the order, or Admin |

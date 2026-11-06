@@ -16,6 +16,7 @@ internal static class IntegrationEventMapper
         return domainEvent switch
         {
             OrderPaid paid => new OrderPaidIntegrationEvent(
+                Guid.NewGuid(),
                 order.Id,
                 order.CustomerId,
                 order.ReservationId,
@@ -24,24 +25,28 @@ internal static class IntegrationEventMapper
                 MapItems(order)),
 
             OrderPaidAfterExpiry expired => new OrderPaidAfterExpiryIntegrationEvent(
+                Guid.NewGuid(),
                 order.Id,
                 order.CustomerId,
                 order.ReservationId,
                 order.TotalAmount,
                 expired.PaidAt,
                 expired.Reason,
+                order.CustomerEmail,
                 MapItems(order)),
 
             OrderRefunded refunded => new RefundProcessedIntegrationEvent(
+                Guid.NewGuid(),
                 order.Id,
                 order.CustomerId,
                 order.TotalAmount,
-                refunded.RefundedAt),
+                refunded.RefundedAt,
+                order.CustomerEmail),
 
             _ => null
         };
     }
 
     private static IReadOnlyList<OrderItemIntegrationDto> MapItems(Order order)
-        => order.Items.Select(i => new OrderItemIntegrationDto(i.TicketTypeId, i.Quantity, i.Price)).ToList();
+        => order.Items.Select(i => new OrderItemIntegrationDto(i.TicketTypeId, i.Quantity, i.Price, i.TicketTypeName)).ToList();
 }

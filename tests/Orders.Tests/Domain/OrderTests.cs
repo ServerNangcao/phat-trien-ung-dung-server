@@ -9,6 +9,7 @@ public class OrderTests
 {
     private static readonly Guid CustomerId = Guid.NewGuid();
     private static readonly Guid ReservationId = Guid.NewGuid();
+    private static readonly Guid EventId = Guid.NewGuid();
     private static readonly DateTime Now = new(2026, 11, 4, 12, 0, 0, DateTimeKind.Utc);
 
     private static IReadOnlyList<OrderItem> Items() => new[]
@@ -20,7 +21,7 @@ public class OrderTests
     [Fact]
     public void Create_WithValidInput_SucceedsAndRaisesOrderCreated()
     {
-        var result = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now);
+        var result = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now);
 
         result.IsSuccess.Should().BeTrue();
         var order = result.Value;
@@ -43,7 +44,7 @@ public class OrderTests
         var items = emptyItems ? Array.Empty<OrderItem>() : Items();
         var total = negativeTotal ? -1m : 300_000m;
 
-        var result = Order.Create(customer, reservation, total, items, Now);
+        var result = Order.Create(customer, reservation, EventId, total, items, Now);
 
         result.IsFailure.Should().BeTrue();
     }
@@ -51,16 +52,25 @@ public class OrderTests
     [Fact]
     public void Create_WithTotalMismatchingItems_Fails()
     {
-        var result = Order.Create(CustomerId, ReservationId, 999_999m, Items(), Now);
+        var result = Order.Create(CustomerId, ReservationId, EventId, 999_999m, Items(), Now);
 
         result.IsFailure.Should().BeTrue();
-        result.Error.Message.Should().Contain("does not match the sum of item subtotals");
+        result.Error.Message.Should().Contain("does not match the items total");
+    }
+
+    [Fact]
+    public void Create_WithEmptyEventId_Fails()
+    {
+        var result = Order.Create(CustomerId, ReservationId, Guid.Empty, 300_000m, Items(), Now);
+
+        result.IsFailure.Should().BeTrue();
+        result.Error.Message.Should().Contain("Event identifier cannot be empty");
     }
 
     [Fact]
     public void MarkAsPaid_FromPending_SetsStatusAndRaisesEvent()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
 
         order.MarkAsPaid(Now.AddMinutes(5));
 
@@ -71,7 +81,7 @@ public class OrderTests
     [Fact]
     public void MarkAsPaid_FromNonPending_Throws()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
         order.MarkAsPaid(Now.AddMinutes(5));
 
         var act = () => order.MarkAsPaid(Now.AddMinutes(6));
@@ -82,7 +92,7 @@ public class OrderTests
     [Fact]
     public void MarkAsPaidAfterExpiry_SetsStatusAndRaisesEventWithReason()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
 
         order.MarkAsPaidAfterExpiry(Now.AddMinutes(20), "late payment");
 
@@ -94,7 +104,7 @@ public class OrderTests
     [Fact]
     public void RequestRefund_FromPaid_SetsStatusAndRaisesEvent()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
         order.MarkAsPaid(Now.AddMinutes(5));
 
         order.RequestRefund("changed plans", Now.AddMinutes(10));
@@ -106,7 +116,7 @@ public class OrderTests
     [Fact]
     public void RequestRefund_FromPending_Throws()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
 
         var act = () => order.RequestRefund("changed plans", Now.AddMinutes(1));
 
@@ -116,7 +126,7 @@ public class OrderTests
     [Fact]
     public void RequestRefund_WithEmptyReason_Throws()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
         order.MarkAsPaid(Now.AddMinutes(5));
 
         var act = () => order.RequestRefund("  ", Now.AddMinutes(10));
@@ -127,7 +137,7 @@ public class OrderTests
     [Fact]
     public void MarkAsRefunded_FromRefundRequested_SetsStatusAndRaisesEvent()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
         order.MarkAsPaid(Now.AddMinutes(5));
         order.RequestRefund("changed plans", Now.AddMinutes(10));
 
@@ -140,7 +150,7 @@ public class OrderTests
     [Fact]
     public void MarkRefundRejected_FromRefundRequested_ReturnsToPaid()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
         order.MarkAsPaid(Now.AddMinutes(5));
         order.RequestRefund("changed plans", Now.AddMinutes(10));
 
@@ -152,7 +162,7 @@ public class OrderTests
     [Fact]
     public void Cancel_FromPending_SetsCancelled()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
 
         order.Cancel(Now.AddMinutes(1));
 
@@ -162,7 +172,7 @@ public class OrderTests
     [Fact]
     public void Cancel_FromPaid_Throws()
     {
-        var order = Order.Create(CustomerId, ReservationId, 300_000m, Items(), Now).Value;
+        var order = Order.Create(CustomerId, ReservationId, EventId, 300_000m, Items(), Now).Value;
         order.MarkAsPaid(Now.AddMinutes(5));
 
         var act = () => order.Cancel(Now.AddMinutes(10));

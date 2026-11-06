@@ -19,6 +19,8 @@ public interface IOrderRepository
 
     Task<IReadOnlyList<Order>> ListByCustomerAsync(Guid customerId, CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<Order>> ListByEventAsync(Guid eventId, CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<Order>> ListByIdsAsync(IReadOnlyList<Guid> ids, CancellationToken cancellationToken = default);
 
     Task AddRefundRequestAsync(RefundRequest refundRequest, CancellationToken cancellationToken = default);

@@ -44,6 +44,16 @@ public sealed class OrderRepository : IOrderRepository
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Order>> ListByEventAsync(Guid eventId, CancellationToken cancellationToken = default)
+    {
+        return await _dbContext.Orders
+            .AsNoTracking()
+            .Include(o => o.Items)
+            .Where(o => o.EventId == eventId)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<Order>> ListByIdsAsync(IReadOnlyList<Guid> ids, CancellationToken cancellationToken = default)
     {
         if (ids.Count == 0)

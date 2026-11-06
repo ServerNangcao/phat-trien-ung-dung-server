@@ -121,4 +121,117 @@ public class NotificationsApiTests
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         factory.Email.SendCallCount.Should().Be(0);
     }
+
+    [Fact]
+    public async Task LatePaymentEvent_SendsApologyEmailWithRefundConfirmation()
+    {
+        using var factory = new NotificationsApiFactory();
+        var client = factory.CreateClient();
+        var @event = new OrderPaidAfterExpiryIntegrationEvent
+        {
+            EventId = Guid.NewGuid(),
+            OrderId = Guid.NewGuid(),
+            CustomerId = Guid.NewGuid(),
+            TotalAmount = 250_000m,
+            PaidAt = DateTime.UtcNow,
+            Reason = "Payment received after the reservation expired (ADR-0003).",
+            CustomerEmail = "fan@example.com"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/integration-events/order-paid-after-expiry", @event);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        for (var i = 0; i < 50 && factory.Email.SendCallCount == 0; i++)
+            await Task.Delay(100);
+        factory.Email.SendCallCount.Should().Be(1);
+        factory.Email.Sent[^1].Subject.Should().Contain(@event.OrderId.ToString()).And.Contain("expired");
+
+        var history = await client.GetAsync($"/api/notifications/order/{@event.OrderId}");
+        var records = await history.Content.ReadFromJsonAsync<JsonElement>();
+        records.GetArrayLength().Should().Be(1);
+        records[0].GetProperty("status").GetString().Should().Be("Sent");
+        records[0].GetProperty("body").GetString().Should().Contain("250,000 VND");
+    }
+
+    [Fact]
+    public async Task LatePaymentEvent_Redelivered_NeverSendsTwice()
+    {
+        using var factory = new NotificationsApiFactory();
+        var client = factory.CreateClient();
+        var @event = new OrderPaidAfterExpiryIntegrationEvent
+        {
+            EventId = Guid.NewGuid(),
+            OrderId = Guid.NewGuid(),
+            CustomerId = Guid.NewGuid(),
+            TotalAmount = 250_000m,
+            PaidAt = DateTime.UtcNow,
+            Reason = "ADR-0003",
+            CustomerEmail = "fan@example.com"
+        };
+
+        var first = await client.PostAsJsonAsync("/api/integration-events/order-paid-after-expiry", @event);
+        for (var i = 0; i < 50 && factory.Email.SendCallCount == 0; i++)
+            await Task.Delay(100);
+        var second = await client.PostAsJsonAsync("/api/integration-events/order-paid-after-expiry", @event);
+
+        first.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("duplicated").GetBoolean().Should().BeTrue();
+        factory.Email.SendCallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task LatePaymentEvent_WithoutCustomerEmail_ConsumedWithoutEmail()
+    {
+        using var factory = new NotificationsApiFactory();
+        var client = factory.CreateClient();
+        var @event = new OrderPaidAfterExpiryIntegrationEvent
+        {
+            EventId = Guid.NewGuid(),
+            OrderId = Guid.NewGuid(),
+            CustomerId = Guid.NewGuid(),
+            TotalAmount = 250_000m,
+            PaidAt = DateTime.UtcNow,
+            Reason = "ADR-0003",
+            CustomerEmail = ""
+        };
+
+        var response = await client.PostAsJsonAsync("/api/integration-events/order-paid-after-expiry", @event);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var history = await client.GetAsync($"/api/notifications/order/{@event.OrderId}");
+        var records = await history.Content.ReadFromJsonAsync<JsonElement>();
+        records.GetArrayLength().Should().Be(0);
+        factory.Email.SendCallCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RefundProcessedEvent_SendsConfirmationEmail()
+    {
+        using var factory = new NotificationsApiFactory();
+        var client = factory.CreateClient();
+        var @event = new RefundProcessedIntegrationEvent
+        {
+            EventId = Guid.NewGuid(),
+            OrderId = Guid.NewGuid(),
+            CustomerId = Guid.NewGuid(),
+            TotalAmount = 180_000m,
+            RefundedAt = DateTime.UtcNow,
+            CustomerEmail = "fan@example.com"
+        };
+
+        var response = await client.PostAsJsonAsync("/api/integration-events/refund-processed", @event);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Accepted);
+        for (var i = 0; i < 50 && factory.Email.SendCallCount == 0; i++)
+            await Task.Delay(100);
+        factory.Email.SendCallCount.Should().Be(1);
+        factory.Email.Sent[^1].Subject.Should().Contain("refund").And.Contain("processed");
+
+        var history = await client.GetAsync($"/api/notifications/order/{@event.OrderId}");
+        var records = await history.Content.ReadFromJsonAsync<JsonElement>();
+        records.GetArrayLength().Should().Be(1);
+        records[0].GetProperty("status").GetString().Should().Be("Sent");
+        records[0].GetProperty("body").GetString().Should().Contain("180,000 VND");
+    }
 }

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using MediatR;
 using Ticketing.Modules.Orders.Application.Commands;
 using Ticketing.Modules.Orders.Application.Repositories;
+using Ticketing.Modules.Orders.Domain.Entities;
 using Ticketing.Modules.Orders.Infrastructure.Payment;
 
 namespace Ticketing.Modules.Orders.Api.Endpoints;
@@ -80,5 +81,69 @@ public static class PaymentEndpoints
             return Results.Redirect(redirectUrl);
         })
         .WithName("VnPayReturn");
+
+        // FR-16: MoMo e-wallet payment. Creates the hosted payment URL for a pending order.
+        group.MapPost("/momo/create", async (
+            [FromBody] MoMoCreateRequest request,
+            [FromServices] MoMoPaymentService momoService,
+            [FromServices] IOrderRepository orderRepository) =>
+        {
+            var order = await orderRepository.GetByIdAsync(request.OrderId);
+            if (order is null)
+                return Results.NotFound(new { error = $"Order {request.OrderId} not found." });
+
+            if (order.Status != OrderStatus.Pending)
+                return Results.BadRequest(new { error = $"Order {order.Id} is {order.Status}; only pending orders can be paid." });
+
+            var result = await momoService.CreatePaymentAsync(
+                order.Id, order.TotalAmount, $"Ticketing order {order.Id}");
+
+            return result.Match<IResult>(
+                payment => Results.Ok(new { OrderId = payment.OrderId, RequestId = payment.RequestId,
+                    PayUrl = payment.PayUrl, QrCodeUrl = payment.QrCodeUrl }),
+                error => Results.Problem(title: error.Code, detail: error.Message, statusCode: StatusCodes.Status503ServiceUnavailable));
+        })
+        .WithName("CreateMoMoPayment");
+
+        // FR-16: MoMo IPN callback. MoMo retries while the merchant responds non-2xx, so:
+        // bad signature → 400 (retry, tampering), success → 200 {resultCode: 0}, permanent
+        // state errors (amount mismatch) → 200 {resultCode: 4} (retrying cannot fix it),
+        // transient/unresolvable (missing order, Ticketing outage) → 503 (retry).
+        group.MapPost("/momo/ipn", async (
+            [FromBody] Dictionary<string, string?> ipn,
+            [FromServices] MoMoPaymentService momoService,
+            [FromServices] ISender sender) =>
+        {
+            ipn.TryGetValue("signature", out var signature);
+            if (!momoService.VerifyIpnSignature(ipn, signature ?? string.Empty))
+                return Results.BadRequest(new { resultCode = 97, message = "Invalid signature" });
+
+            ipn.TryGetValue("resultCode", out var resultCodeRaw);
+            if (resultCodeRaw != "0")
+            {
+                // Payment failed or was cancelled at the gateway: no state change, but the
+                // IPN is acknowledged so MoMo stops retrying.
+                return Results.Ok(new { resultCode = 0, message = "Payment not successful; no state change" });
+            }
+
+            ipn.TryGetValue("orderId", out var orderIdRaw);
+            ipn.TryGetValue("amount", out var amountRaw);
+            if (!Guid.TryParse(orderIdRaw, out var orderId)
+                || !decimal.TryParse(amountRaw, System.Globalization.CultureInfo.InvariantCulture, out var amount))
+            {
+                return Results.Ok(new { resultCode = 4, message = "Malformed orderId or amount; not retryable" });
+            }
+
+            var result = await sender.Send(new CompleteOrderPaymentCommand(orderId, amount));
+
+            return result.Match<IResult>(
+                success => Results.Ok(new { resultCode = 0, message = "Success", OrderId = success.OrderId }),
+                error => error.Code == "ValidationError"
+                    ? Results.Ok(new { resultCode = 4, message = error.Message })
+                    : Results.Problem(title: error.Code, detail: error.Message, statusCode: StatusCodes.Status503ServiceUnavailable));
+        })
+        .WithName("MoMoIpn");
     }
 }
+
+public sealed record MoMoCreateRequest(Guid OrderId);

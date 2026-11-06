@@ -23,9 +23,9 @@ public class EmailRetryProcessorTests
         var db = new NotificationsDbContext(options);
         var repository = new EmailRepository(db);
         var unitOfWork = new UnitOfWork(db);
-        var ticketProcessor = new TicketEmailProcessor(new FakeInbox(), repository, email, unitOfWork,
-            new FixedClock(Now), NullLogger<TicketEmailProcessor>.Instance);
-        var processor = new EmailRetryProcessor(repository, ticketProcessor, NullLogger<EmailRetryProcessor>.Instance);
+        var dispatcher = new EmailDispatcher(repository, email, unitOfWork,
+            new FixedClock(Now), NullLogger<EmailDispatcher>.Instance);
+        var processor = new EmailRetryProcessor(repository, dispatcher, NullLogger<EmailRetryProcessor>.Instance);
         return (processor, repository, unitOfWork);
     }
 

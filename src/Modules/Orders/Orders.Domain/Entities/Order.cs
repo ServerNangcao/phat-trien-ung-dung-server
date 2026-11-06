@@ -17,14 +17,34 @@ public sealed class Order : Entity
     public Guid CustomerId { get; private init; }
 
     /// <summary>
+    /// The customer's contact email, denormalized from the reservation so refund
+    /// notifications (UC-ORD-02) can address the buyer. Empty when the reservation
+    /// did not carry one.
+    /// </summary>
+    public string CustomerEmail { get; private init; } = string.Empty;
+
+    /// <summary>
     /// The reservation this order was created from. Unique: one reservation yields at most one active order.
     /// </summary>
     public Guid ReservationId { get; private init; }
 
     /// <summary>
-    /// The total monetary value of this order, computed from its line items.
+    /// The event the reserved tickets belong to, denormalized from the reservation so
+    /// event-scoped reports (sales summary, FR-22 export) query this schema alone.
+    /// </summary>
+    public Guid EventId { get; private init; }
+
+    /// <summary>
+    /// The total monetary value of this order: the sum of item subtotals minus the
+    /// discount amount. This is the payable total the payment gateway must confirm.
     /// </summary>
     public decimal TotalAmount { get; private set; }
+
+    /// <summary>
+    /// The amount taken off the item subtotals by a discount code (FR-16). Zero when the
+    /// order was placed without a discount.
+    /// </summary>
+    public decimal DiscountAmount { get; private init; }
 
     /// <summary>
     /// The current lifecycle state of the order.
@@ -58,12 +78,16 @@ public sealed class Order : Entity
     {
     }
 
-    private Order(Guid id, Guid customerId, Guid reservationId, decimal totalAmount, DateTime createdAt)
+    private Order(Guid id, Guid customerId, string customerEmail, Guid reservationId, Guid eventId,
+        decimal totalAmount, decimal discountAmount, DateTime createdAt)
         : base(id)
     {
         CustomerId = customerId;
+        CustomerEmail = customerEmail;
         ReservationId = reservationId;
+        EventId = eventId;
         TotalAmount = totalAmount;
+        DiscountAmount = discountAmount;
         Status = OrderStatus.Pending;
         CreatedAt = createdAt;
         UpdatedAt = createdAt;
@@ -74,12 +98,15 @@ public sealed class Order : Entity
     /// </summary>
     /// <param name="customerId">The customer placing the order.</param>
     /// <param name="reservationId">The ticket reservation this order fulfills.</param>
-    /// <param name="totalAmount">The computed total across all line items.</param>
+    /// <param name="eventId">The event the reserved tickets belong to.</param>
+    /// <param name="totalAmount">The payable total: items total minus the discount amount.</param>
     /// <param name="items">The line items in the order.</param>
     /// <param name="now">The current UTC timestamp.</param>
+    /// <param name="customerEmail">The customer's contact email (may be empty).</param>
+    /// <param name="discountAmount">The amount a discount code took off the items total (FR-16).</param>
     /// <returns>A result containing the order on success, or a validation error.</returns>
-    public static Result<Order> Create(Guid customerId, Guid reservationId, decimal totalAmount,
-        IReadOnlyList<OrderItem> items, DateTime now)
+    public static Result<Order> Create(Guid customerId, Guid reservationId, Guid eventId, decimal totalAmount,
+        IReadOnlyList<OrderItem> items, DateTime now, string customerEmail = "", decimal discountAmount = 0m)
     {
         if (customerId == Guid.Empty)
             return Result<Order>.Failure(Error.Validation("Customer identifier cannot be empty."));
@@ -87,15 +114,23 @@ public sealed class Order : Entity
         if (reservationId == Guid.Empty)
             return Result<Order>.Failure(Error.Validation("Reservation identifier cannot be empty."));
 
+        if (eventId == Guid.Empty)
+            return Result<Order>.Failure(Error.Validation("Event identifier cannot be empty."));
+
         if (items is null || items.Count == 0)
             return Result<Order>.Failure(Error.Validation("Order must contain at least one item."));
 
         var itemsTotal = items.Sum(i => i.Subtotal);
-        if (totalAmount != itemsTotal)
+        if (discountAmount < 0 || discountAmount > itemsTotal)
             return Result<Order>.Failure(Error.Validation(
-                $"Total amount {totalAmount} does not match the sum of item subtotals {itemsTotal}."));
+                $"Discount amount {discountAmount} is invalid for an items total of {itemsTotal}."));
 
-        var order = new Order(Guid.NewGuid(), customerId, reservationId, totalAmount, now);
+        if (totalAmount != itemsTotal - discountAmount)
+            return Result<Order>.Failure(Error.Validation(
+                $"Total amount {totalAmount} does not match the items total {itemsTotal} minus discount {discountAmount}."));
+
+        var order = new Order(Guid.NewGuid(), customerId, customerEmail ?? string.Empty, reservationId, eventId,
+            totalAmount, discountAmount, now);
         order._items.AddRange(items);
 
         order._domainEvents.Add(new OrderCreated(order.Id, order.CustomerId, order.TotalAmount, order.CreatedAt));

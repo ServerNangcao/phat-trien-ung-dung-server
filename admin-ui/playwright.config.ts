@@ -9,8 +9,14 @@ export default defineConfig({
   },
   webServer: [
     {
+      // --no-launch-profile is mandatory: launchSettings.json hard-codes
+      // ASPNETCORE_ENVIRONMENT=Development, which silently overrides the env below
+      // and reloads the developer's real user-secrets (sandbox credentials). Without
+      // it the seed's DEMO-signed IPN fails signature verification and every paid
+      // order lands as Pending instead of Paid.
       command:
-        "dotnet run --project src/Modules/Orders/Orders.Api --urls http://localhost:5001 -- --Persistence:Provider=InMemory --IntegrationDelivery:Enabled=false",
+        "dotnet run --project src/Modules/Orders/Orders.Api --no-launch-profile --urls http://localhost:5001 -- --Persistence:Provider=InMemory --IntegrationDelivery:Enabled=false",
+      env: { ASPNETCORE_ENVIRONMENT: "Testing" },
       url: "http://localhost:5001/health",
       cwd: "..",
       reuseExistingServer: !process.env.CI,

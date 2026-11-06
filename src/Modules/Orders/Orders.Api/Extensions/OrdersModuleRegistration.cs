@@ -23,10 +23,14 @@ public static class OrdersModuleRegistration
     {
         services.AddMediatR(cfg => cfg.RegisterServicesFromAssembly(typeof(CreateOrderCommandHandler).Assembly));
 
+        // Public module API consumed by other modules (Events' revenue dashboard, FR-23).
+        services.AddScoped<Contracts.IOrdersModuleApi, OrdersModuleApi>();
+
         // DbContext registration lives in the composition root (Program.cs / TV1's host),
         // which chooses the provider (Npgsql or InMemory for dev/test).
 
         services.AddScoped<IOrderRepository, OrderRepository>();
+        services.AddScoped<IDiscountCodeRepository, DiscountCodeRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IOutbox, OutboxRepository>();
         services.AddSingleton<IClock, SystemClock>();
@@ -39,6 +43,12 @@ public static class OrdersModuleRegistration
 
         services.Configure<VnPayOptions>(configuration.GetSection("Payment:VnPay"));
         services.AddScoped<VnPayPaymentService>();
+
+        // MoMo credentials are validated lazily on first use, so machines that never pay
+        // through MoMo can still start and run the VNPay flow.
+        services.Configure<MoMoOptions>(configuration.GetSection("Payment:MoMo"));
+        services.AddHttpClient();
+        services.AddScoped<MoMoPaymentService>();
 
         return services;
     }

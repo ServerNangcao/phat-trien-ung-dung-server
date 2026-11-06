@@ -33,12 +33,17 @@ http.createServer((req, res) => {
       eventId: eventId,
       items: [{ ticketTypeId, ticketTypeName: 'VIP', quantity: 2, unitPrice: 125000 }],
       expiresAtUtc: new Date(Date.now() + 10 * 60000).toISOString(),
-      isActive: true
+      isActive: true,
+      customerEmail: 'customer@example.com'
     });
     return;
   }
   if (req.method === 'GET' && req.url.includes('/tickets')) {
     send(res, 200, tickets);
+    return;
+  }
+  if (req.method === 'PUT' && req.url.match(/^\/api\/ticketing\/reservations\/[^/]+\/cancel$/)) {
+    send(res, 200, { cancelled: true });
     return;
   }
   send(res, 404, {});

@@ -8,6 +8,8 @@ namespace Ticketing.Modules.Orders.Contracts.IntegrationEvents;
 /// </summary>
 public sealed record OrderPaidIntegrationEvent : IIntegrationEvent, INotification
 {
+    /// <summary>Unique per occurrence; consumers' Inbox pattern dedupes redeliveries by it.</summary>
+    public Guid EventId { get; init; }
     public Guid OrderId { get; init; }
     public Guid CustomerId { get; init; }
     public Guid ReservationId { get; init; }
@@ -15,9 +17,10 @@ public sealed record OrderPaidIntegrationEvent : IIntegrationEvent, INotificatio
     public DateTime PaidAt { get; init; }
     public IReadOnlyList<OrderItemIntegrationDto> Items { get; init; } = new List<OrderItemIntegrationDto>();
 
-    public OrderPaidIntegrationEvent(Guid orderId, Guid customerId, Guid reservationId, decimal totalAmount,
+    public OrderPaidIntegrationEvent(Guid eventId, Guid orderId, Guid customerId, Guid reservationId, decimal totalAmount,
         DateTime paidAt, IReadOnlyList<OrderItemIntegrationDto> items)
     {
+        EventId = eventId;
         OrderId = orderId;
         CustomerId = customerId;
         ReservationId = reservationId;
@@ -27,7 +30,7 @@ public sealed record OrderPaidIntegrationEvent : IIntegrationEvent, INotificatio
     }
 }
 
-public sealed record OrderItemIntegrationDto(Guid TicketTypeId, int Quantity, decimal Price);
+public sealed record OrderItemIntegrationDto(Guid TicketTypeId, int Quantity, decimal Price, string TicketTypeName = "");
 
 /// <summary>
 /// Marker interface for integration events crossing module boundaries.

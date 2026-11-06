@@ -52,4 +52,21 @@ public sealed class HttpTicketingModuleApi : ITicketingModuleApi
             return Result<IReadOnlyList<TicketDto>>.Failure(Error.Internal($"Ticketing module unreachable: {ex.Message}"));
         }
     }
+
+    public async Task<Result> CancelReservationAsync(Guid reservationId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var response = await _httpClient.PutAsync(
+                $"api/ticketing/reservations/{reservationId}/cancel", content: null, cancellationToken);
+
+            return response.IsSuccessStatusCode
+                ? Result.Success()
+                : Result.Failure(Error.Internal($"Ticketing reservation cancel returned HTTP {(int)response.StatusCode}."));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            return Result.Failure(Error.Internal($"Ticketing module unreachable: {ex.Message}"));
+        }
+    }
 }

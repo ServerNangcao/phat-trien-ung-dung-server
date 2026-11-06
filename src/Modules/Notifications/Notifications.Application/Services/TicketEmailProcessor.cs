@@ -22,17 +22,17 @@ public sealed class TicketEmailProcessor
 {
     private readonly IInbox _inbox;
     private readonly IEmailRepository _emailRepository;
-    private readonly IEmailService _emailService;
+    private readonly IEmailDispatcher _dispatcher;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
     private readonly ILogger<TicketEmailProcessor> _logger;
 
-    public TicketEmailProcessor(IInbox inbox, IEmailRepository emailRepository, IEmailService emailService,
+    public TicketEmailProcessor(IInbox inbox, IEmailRepository emailRepository, IEmailDispatcher dispatcher,
         IUnitOfWork unitOfWork, IClock clock, ILogger<TicketEmailProcessor> logger)
     {
         _inbox = inbox;
         _emailRepository = emailRepository;
-        _emailService = emailService;
+        _dispatcher = dispatcher;
         _unitOfWork = unitOfWork;
         _clock = clock;
         _logger = logger;
@@ -84,32 +84,11 @@ public sealed class TicketEmailProcessor
     }
 
     /// <summary>
-    /// The single send lifecycle: attempt the send, record Sent or Failed (+backoff), commit.
+    /// Delegates the send lifecycle to the shared EmailDispatcher (same path as first
+    /// delivery and the retry worker).
     /// </summary>
-    public async Task DeliverAsync(EmailHistory email, CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            await _emailService.SendAsync(email.To, email.Subject, email.Body, true, cancellationToken);
-            email.MarkSent(_clock.UtcNow);
-            _logger.LogInformation("Email {EmailId} sent to {Email} for order {OrderId}", email.Id, email.To, email.OrderId);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            email.MarkFailed(ex.Message);
-            // Linear backoff (10s, 20s, ...) keeps early retries inside the 30s window.
-            email.ScheduleRetry(_clock.UtcNow.AddSeconds(Math.Min(10 * email.RetryCount, 60)));
-            _logger.LogWarning(ex, "Email {EmailId} to {Email} failed (attempt {RetryCount}); retry scheduled",
-                email.Id, email.To, email.RetryCount);
-        }
-
-        await _emailRepository.UpdateAsync(email, cancellationToken);
-        await _unitOfWork.CommitAsync(cancellationToken);
-    }
+    public Task DeliverAsync(EmailHistory email, CancellationToken cancellationToken = default)
+        => _dispatcher.DeliverAsync(email, cancellationToken);
 
     private static EmailTemplate BuildTicketEmailTemplate(TicketIssuedIntegrationEvent notification)
     {

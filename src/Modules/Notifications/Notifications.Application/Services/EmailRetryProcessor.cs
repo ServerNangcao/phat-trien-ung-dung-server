@@ -6,22 +6,22 @@ namespace Ticketing.Modules.Notifications.Application.Services;
 /// <summary>
 /// One retry pass over emails that are due. Invoked by the background worker every 10
 /// seconds, so a failed first attempt is retried within the 30s delivery budget.
-/// Delivery itself is delegated to TicketEmailProcessor.DeliverAsync — the same lifecycle
-/// as first-attempt sends.
+/// Delivery goes through the shared EmailDispatcher — the same lifecycle as first-attempt
+/// sends, whatever kind of email it is.
 /// </summary>
 public sealed class EmailRetryProcessor
 {
     public const int MaxRetries = 5;
 
     private readonly IEmailRepository _emailRepository;
-    private readonly TicketEmailProcessor _ticketEmailProcessor;
+    private readonly EmailDispatcher _dispatcher;
     private readonly ILogger<EmailRetryProcessor> _logger;
 
-    public EmailRetryProcessor(IEmailRepository emailRepository, TicketEmailProcessor ticketEmailProcessor,
+    public EmailRetryProcessor(IEmailRepository emailRepository, EmailDispatcher dispatcher,
         ILogger<EmailRetryProcessor> logger)
     {
         _emailRepository = emailRepository;
-        _ticketEmailProcessor = ticketEmailProcessor;
+        _dispatcher = dispatcher;
         _logger = logger;
     }
 
@@ -33,7 +33,7 @@ public sealed class EmailRetryProcessor
         {
             _logger.LogInformation("Retrying email {EmailId} to {To} (attempt {RetryCount})",
                 email.Id, email.To, email.RetryCount);
-            await _ticketEmailProcessor.DeliverAsync(email, cancellationToken);
+            await _dispatcher.DeliverAsync(email, cancellationToken);
         }
     }
 }

@@ -29,7 +29,9 @@ public class TicketEmailProcessorTests
         var repository = new FakeEmailRepository();
         var unitOfWork = new FakeUnitOfWork(repository);
         var email = new FakeEmailService();
-        var processor = new TicketEmailProcessor(new FakeInbox(), repository, email, unitOfWork,
+        var dispatcher = new EmailDispatcher(repository, email, unitOfWork,
+            new FixedClock(Now), NullLogger<EmailDispatcher>.Instance);
+        var processor = new TicketEmailProcessor(new FakeInbox(), repository, dispatcher, unitOfWork,
             new FixedClock(Now), NullLogger<TicketEmailProcessor>.Instance);
         return (processor, repository, email, unitOfWork);
     }

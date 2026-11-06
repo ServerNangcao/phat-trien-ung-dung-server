@@ -1,6 +1,7 @@
 using MediatR;
 using Ticketing.Modules.Orders.Application.Ports;
 using Ticketing.Modules.Orders.Application.Repositories;
+using Ticketing.Modules.Orders.Contracts;
 using Ticketing.Modules.Orders.Domain.Entities;
 using Ticketing.SharedKernel;
 
@@ -71,6 +72,80 @@ public sealed class GetOrderDetailQueryHandler : IRequestHandler<GetOrderDetailQ
             order.Items.Select(i => new OrderItemDto(i.TicketTypeId, i.Quantity, i.Price, i.Subtotal)).ToList());
 
         return Result<OrderDetailDto>.Success(dto);
+    }
+}
+
+/// <summary>
+/// FR-23 / PDF 3.3(e): revenue summary for one event, consumed by the Events module's
+/// dashboard through IOrdersModuleApi.GetSalesSummaryAsync. Revenue counts Paid orders
+/// only — refunded money is returned to the customer, not earned.
+/// </summary>
+public sealed record GetEventSalesSummaryQuery(Guid EventId) : IRequest<Result<SalesSummaryDto>>;
+
+public sealed class GetEventSalesSummaryQueryHandler : IRequestHandler<GetEventSalesSummaryQuery, Result<SalesSummaryDto>>
+{
+    private readonly IOrderRepository _orderRepository;
+
+    public GetEventSalesSummaryQueryHandler(IOrderRepository orderRepository)
+    {
+        _orderRepository = orderRepository;
+    }
+
+    public async Task<Result<SalesSummaryDto>> Handle(GetEventSalesSummaryQuery request, CancellationToken cancellationToken)
+    {
+        var orders = await _orderRepository.ListByEventAsync(request.EventId, cancellationToken);
+
+        var paidOrders = orders.Where(o => o.Status == OrderStatus.Paid).ToList();
+        var byTicketType = paidOrders
+            .SelectMany(o => o.Items)
+            .GroupBy(i => i.TicketTypeId)
+            .Select(g => new SalesByTicketTypeDto(
+                g.Key,
+                g.First().TicketTypeName,
+                g.Sum(i => i.Quantity),
+                g.Sum(i => i.Subtotal)))
+            .OrderByDescending(t => t.Revenue)
+            .ToList();
+
+        var summary = new SalesSummaryDto(
+            request.EventId,
+            paidOrders.Sum(o => o.TotalAmount),
+            paidOrders.Count,
+            byTicketType);
+
+        return Result<SalesSummaryDto>.Success(summary);
+    }
+}
+
+/// <summary>
+/// FR-22: full order list for one event (CSV export feed). Includes every order state so
+/// the organizer sees pending and cancelled orders alongside paid ones.
+/// </summary>
+public sealed record GetEventOrdersQuery(Guid EventId) : IRequest<Result<IReadOnlyList<EventOrderRowDto>>>;
+
+public sealed record EventOrderRowDto(Guid OrderId, Guid CustomerId, Guid ReservationId, decimal TotalAmount,
+    string Status, DateTime CreatedAt, IReadOnlyList<EventOrderItemRowDto> Items);
+
+public sealed record EventOrderItemRowDto(Guid TicketTypeId, string TicketTypeName, int Quantity, decimal Price);
+
+public sealed class GetEventOrdersQueryHandler : IRequestHandler<GetEventOrdersQuery, Result<IReadOnlyList<EventOrderRowDto>>>
+{
+    private readonly IOrderRepository _orderRepository;
+
+    public GetEventOrdersQueryHandler(IOrderRepository orderRepository)
+    {
+        _orderRepository = orderRepository;
+    }
+
+    public async Task<Result<IReadOnlyList<EventOrderRowDto>>> Handle(GetEventOrdersQuery request, CancellationToken cancellationToken)
+    {
+        var orders = await _orderRepository.ListByEventAsync(request.EventId, cancellationToken);
+        var rows = orders.Select(o => new EventOrderRowDto(
+            o.Id, o.CustomerId, o.ReservationId, o.TotalAmount, o.Status.ToString(), o.CreatedAt,
+            o.Items.Select(i => new EventOrderItemRowDto(i.TicketTypeId, i.TicketTypeName, i.Quantity, i.Price)).ToList()))
+            .ToList();
+
+        return Result<IReadOnlyList<EventOrderRowDto>>.Success(rows);
     }
 }
 
