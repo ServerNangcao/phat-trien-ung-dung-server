@@ -83,7 +83,7 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
 
 ### Backend
 - **Nền tảng:** .NET 10 (C# 14), ASP.NET Core Minimal APIs.
-- **ORM & Database:** Entity Framework Core 10, PostgreSQL 16 (Npgsql).
+- **ORM & Database:** Entity Framework Core 10, PostgreSQL 18 (Npgsql).
 - **Bộ nhớ đệm & Khóa:** Redis 7 (Cache, Distributed Lock, Rate Limiting).
 - **Validation & Mapping:** FluentValidation.
 - **Bảo mật & Ký số:** ASP.NET Identity, JWT Bearer, HMAC-SHA256 (QR Signature).

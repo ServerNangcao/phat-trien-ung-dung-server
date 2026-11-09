@@ -13,7 +13,7 @@
   <PropertyGroup>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
-    <NoWarn>$(NoWarn);CA1848;CA1873;CA1711;CA1707</NoWarn>
+    <NoWarn>$(NoWarn);CA1848;CA1873;CA1711;CA1707;CA1861</NoWarn>
   </PropertyGroup>
 
 </Project>

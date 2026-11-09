@@ -1,7 +1,9 @@
+using Events.Internal.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Ticketing.Infrastructure.Core;
 
 namespace Events.Internal.Api;
 
@@ -15,7 +17,13 @@ public static class EventsModule
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // TODO: Đăng ký DbContext, Services, Validators, EventHandlers
+        services.AddModuleDbContext<EventsDbContext>(
+            connectionStringName: "DefaultConnection",
+            schema: EventsDbContext.SchemaName,
+            configuration: configuration);
+
+        services.AddModuleValidators(typeof(EventsModule).Assembly);
+
         return services;
     }
 

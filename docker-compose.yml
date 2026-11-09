@@ -7,14 +7,15 @@
 services:
   # ─── PostgreSQL ───
   ticketing-db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
+      PGDATA: /var/lib/postgresql/data
       POSTGRES_DB: ${POSTGRES_DB:-ticketing}
       POSTGRES_USER: ${POSTGRES_USER:-ticketing_app}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ChangeMeInProduction!}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-123456}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     deploy:
@@ -51,7 +52,7 @@ services:
 
   # ─── MinIO (dev only — S3-compatible object storage) ───
   ticketing-minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -83,9 +84,9 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__DefaultConnection: Host=ticketing-db;Port=5432;Database=${POSTGRES_DB:-ticketing};Username=${POSTGRES_USER:-ticketing_app};Password=${POSTGRES_PASSWORD:-ChangeMeInProduction!}
+      ConnectionStrings__DefaultConnection: Host=ticketing-db;Port=5432;Database=${POSTGRES_DB:-ticketing};Username=${POSTGRES_USER:-ticketing_app};Password=${POSTGRES_PASSWORD:-123456}
       ConnectionStrings__Redis: ticketing-redis:6379
-      ConnectionStrings__Hangfire: Host=ticketing-db;Port=5432;Database=${POSTGRES_DB:-ticketing};Username=${POSTGRES_USER:-ticketing_app};Password=${POSTGRES_PASSWORD:-ChangeMeInProduction!}
+      ConnectionStrings__Hangfire: Host=ticketing-db;Port=5432;Database=${POSTGRES_DB:-ticketing};Username=${POSTGRES_USER:-ticketing_app};Password=${POSTGRES_PASSWORD:-123456}
       Jwt__Secret: ${Jwt__Secret:-SuperSecretKeyAtLeast32Characters!!}
       Jwt__Issuer: ${Jwt__Issuer:-ticketing-api}
       Jwt__Audience: ${Jwt__Audience:-ticketing-client}

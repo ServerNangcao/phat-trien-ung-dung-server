@@ -70,17 +70,17 @@ public class TicketNotificationTests : IDisposable
             await handler.HandleAsync(integrationEvent, CancellationToken.None);
         }
 
-        // Kiểm tra sau lần 1: Có 1 InboxMessage và 1 EmailLog
+        // Kiểm tra sau lần 1: Có 1 InboxMessage và 1 EmailNotification
         using (var context = new NotificationsDbContext(_options))
         {
             var inboxCount = await context.InboxMessages.CountAsync(x => x.EventId == integrationEvent.EventId);
             Assert.Equal(1, inboxCount);
 
-            var emailLogs = await context.EmailLogs.ToListAsync();
-            Assert.Single(emailLogs);
-            Assert.Equal("khachhang@example.com", emailLogs[0].RecipientEmail);
-            Assert.Equal(EmailStatus.Sent, emailLogs[0].Status);
-            Assert.Contains("TCK-ROCK-001", emailLogs[0].Body);
+            var emails = await context.EmailNotifications.ToListAsync();
+            Assert.Single(emails);
+            Assert.Equal("khachhang@example.com", emails[0].Recipient);
+            Assert.Equal(EmailNotificationStatus.Sent, emails[0].Status);
+            Assert.Contains("TCK-ROCK-001", emails[0].Body);
         }
 
         // Lần 2: Giao lại chính event đó (retry / duplicate)
@@ -90,11 +90,11 @@ public class TicketNotificationTests : IDisposable
             await handler.HandleAsync(integrationEvent, CancellationToken.None);
         }
 
-        // Kiểm tra sau lần 2: Vẫn chỉ có 1 EmailLog (không bị gửi lặp)
+        // Kiểm tra sau lần 2: Vẫn chỉ có 1 EmailNotification (không bị gửi lặp)
         using (var context = new NotificationsDbContext(_options))
         {
-            var emailLogCount = await context.EmailLogs.CountAsync();
-            Assert.Equal(1, emailLogCount);
+            var emailCount = await context.EmailNotifications.CountAsync();
+            Assert.Equal(1, emailCount);
         }
     }
 }

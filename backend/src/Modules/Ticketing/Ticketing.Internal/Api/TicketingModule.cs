@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Ticketing.Infrastructure.Core;
+using Ticketing.Internal.Infrastructure;
 
 namespace Ticketing.Internal.Api;
 
@@ -15,7 +17,13 @@ public static class TicketingModule
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // TODO: Đăng ký DbContext, Services, Validators, EventHandlers
+        services.AddModuleDbContext<TicketingDbContext>(
+            connectionStringName: "DefaultConnection",
+            schema: TicketingDbContext.SchemaName,
+            configuration: configuration);
+
+        services.AddModuleValidators(typeof(TicketingModule).Assembly);
+
         return services;
     }
 
