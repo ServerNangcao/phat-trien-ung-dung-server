@@ -166,6 +166,14 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
    - Truy cập giao diện tài liệu API (Scalar/OpenAPI): `http://localhost:5000/openapi/v1.json` hoặc Swagger UI tương ứng.
    - Kiểm tra trạng thái hệ thống: `http://localhost:5000/health`.
 
+### Frontend khách hàng và check-in
+
+Frontend React 19 nằm trong `frontend/`. Chạy `cd frontend`, sau đó `npm ci` và `npm run dev`. Môi trường phát triển bật rõ ràng chế độ demo (`VITE_DATA_MODE=demo`) với dữ liệu mẫu lưu cục bộ; không có giao dịch tiền thật. Dùng `frontend/.env.example` làm mẫu production (`VITE_DATA_MODE=api`) để gọi backend qua `VITE_API_URL`.
+
+Các luồng gồm khám phá/lọc sự kiện, chi tiết và giữ vé 10 phút, checkout, vé QR, và trang check-in mobile. Camera cần chạy trên HTTPS hoặc localhost và người dùng cấp quyền camera. Sinh client/DTO types bằng `npm run api:generate` khi API đang chạy ở Development, với OpenAPI tại `/openapi/v1.json`; các module backend hiện chưa có endpoint nghiệp vụ nên client sinh từ spec hiện tại chưa thể cung cấp tích hợp bán vé/đăng nhập/check-in hoạt động. Chỉ checkout VNPay thật khi backend cung cấp endpoint tạo đơn và URL thanh toán.
+
+Kiểm tra frontend: `npm run build`, `npm run test:e2e` (Playwright Chromium; cài browser với `npx playwright install chromium`). CI chạy build và E2E riêng trong GitHub Actions. Có thể đóng gói SPA với `docker build -t ticketing-frontend ./frontend`; truyền `--build-arg VITE_API_URL=...` để trỏ tới backend.
+
 ---
 
 ## 7. Tài liệu dự án liên quan
@@ -178,4 +186,3 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
 
 
 ---
-
