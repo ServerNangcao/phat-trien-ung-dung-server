@@ -52,6 +52,12 @@ internal sealed class TicketIssuedEventHandler : IIntegrationEventHandler<Ticket
         var subject = $"[Ticketing Platform] Vé điện tử sự kiện: {integrationEvent.EventTitle}";
         var body = BuildEmailBody(integrationEvent);
 
+        var notification = EmailNotification.Create(
+            integrationEvent.OrderId,
+            integrationEvent.CustomerEmail,
+            subject,
+            body);
+
         try
         {
             // 3. Gửi email
@@ -61,18 +67,18 @@ internal sealed class TicketIssuedEventHandler : IIntegrationEventHandler<Ticket
                 body,
                 cancellationToken);
 
-            // 4. Ghi log thành công
-            _dbContext.EmailLogs.Add(
-                EmailLog.CreateSuccess(integrationEvent.CustomerEmail, subject, body));
+            // 4. Đánh dấu thành công
+            notification.MarkSent();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send ticket email to {Email}", integrationEvent.CustomerEmail);
-            _dbContext.EmailLogs.Add(
-                EmailLog.CreateFailure(integrationEvent.CustomerEmail, subject, body, ex.Message));
+            notification.MarkFailed(ex.Message, DateTime.UtcNow.AddMinutes(5));
         }
 
-        // 5. Lưu InboxMessage và EmailLog cùng transaction
+        _dbContext.EmailNotifications.Add(notification);
+
+        // 5. Lưu InboxMessage và EmailNotification cùng transaction
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 

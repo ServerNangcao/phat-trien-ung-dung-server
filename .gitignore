@@ -14,6 +14,9 @@
 ## Node / Frontend
 node_modules/
 dist/
+frontend/playwright-report/
+frontend/test-results/
+*.tsbuildinfo
 
 ## Environment & Secrets
 .env

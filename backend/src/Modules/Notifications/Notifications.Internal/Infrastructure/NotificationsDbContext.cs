@@ -13,24 +13,12 @@ internal sealed class NotificationsDbContext : BaseDbContext
     {
     }
 
-    public DbSet<EmailLog> EmailLogs => Set<EmailLog>();
+    public DbSet<EmailNotification> EmailNotifications => Set<EmailNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.Entity<EmailLog>(entity =>
-        {
-            entity.ToTable("EmailLogs", SchemaName);
-            entity.HasKey(x => x.Id);
-            entity.Property(x => x.RecipientEmail).HasMaxLength(256).IsRequired();
-            entity.Property(x => x.Subject).HasMaxLength(500).IsRequired();
-            entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(50);
-            entity.Property(x => x.ErrorMessage).HasMaxLength(2000);
-            entity.Property(x => x.SentAt).IsRequired();
-
-            entity.HasIndex(x => x.RecipientEmail);
-            entity.HasIndex(x => x.SentAt);
-        });
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(NotificationsDbContext).Assembly);
     }
 }

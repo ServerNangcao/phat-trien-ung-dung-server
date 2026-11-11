@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Orders.Internal.Infrastructure;
+using Ticketing.Infrastructure.Core;
 
 namespace Orders.Internal.Api;
 
@@ -15,7 +17,13 @@ public static class OrdersModule
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // TODO: Đăng ký DbContext, Services, Validators, EventHandlers
+        services.AddModuleDbContext<OrdersDbContext>(
+            connectionStringName: "DefaultConnection",
+            schema: OrdersDbContext.SchemaName,
+            configuration: configuration);
+
+        services.AddModuleValidators(typeof(OrdersModule).Assembly);
+
         return services;
     }
 

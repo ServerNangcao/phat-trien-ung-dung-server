@@ -1,7 +1,9 @@
+using CheckIn.Internal.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Ticketing.Infrastructure.Core;
 
 namespace CheckIn.Internal.Api;
 
@@ -15,7 +17,13 @@ public static class CheckInModule
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        // TODO: Đăng ký DbContext, Services, Validators, EventHandlers
+        services.AddModuleDbContext<CheckInDbContext>(
+            connectionStringName: "DefaultConnection",
+            schema: CheckInDbContext.SchemaName,
+            configuration: configuration);
+
+        services.AddModuleValidators(typeof(CheckInModule).Assembly);
+
         return services;
     }
 

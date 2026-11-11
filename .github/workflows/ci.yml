@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────
 # CI Pipeline — Ticketing Modular Monolith
 # Runs on every push and PR to main/develop
-# Steps: restore → build → arch tests → Docker build → admin-ui E2E
+# Steps: restore → build → arch tests → Docker build → frontend E2E
 # ──────────────────────────────────────────────────────────
 
 name: CI
@@ -76,23 +76,32 @@ jobs:
           docker stop ci-test
           docker rm ci-test
 
-  admin-ui:
-    name: Admin UI Build & E2E
+  frontend:
+    name: Frontend Build & E2E
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: admin-ui
+        working-directory: frontend
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: 22
           cache: npm
-          cache-dependency-path: admin-ui/package-lock.json
-      - run: npm ci
-      - name: Build (type-check + bundle)
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
         run: npm run build
-      - name: Install Playwright Chromium
+
+      - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
-      - name: E2E tests (boots Orders.Api + mock Ticketing + UI)
+      - name: Run end-to-end tests
+        run: npm run test:e2e
         run: npm run test:e2e
