@@ -11,6 +11,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using Ticketing.Infrastructure.Core;
+using Ticketing.Infrastructure.Core.Outbox;
 
 namespace Identity.Internal.Api;
 
@@ -33,6 +34,8 @@ public static class IdentityModule
                     npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", IdentityDbContext.SchemaName);
                 });
         });
+
+        services.AddSingleton(new BaseDbContextMarker(typeof(IdentityDbContext)));
 
         services.AddIdentityCore<ApplicationUser>(options =>
         {

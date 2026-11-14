@@ -49,6 +49,7 @@ app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {
+    await app.Services.ApplyDatabaseMigrationsAsync();
     app.MapOpenApi();
 }
 
