@@ -142,37 +142,84 @@ Tự động xác thực qua thư viện `NetArchTest` trong CI/CD:
 - [Docker Desktop](https://www.docker.com/) & Docker Compose
 - [Node.js 20+](https://nodejs.org/) (cho phần Frontend)
 
-### Các bước thực hiện
+---
 
-1. **Khởi động các dịch vụ phụ trợ (PostgreSQL, Redis, MinIO):**
+### Cách 1: Khởi chạy nhanh toàn bộ (1 lệnh duy nhất trên Windows)
+
+Sử dụng script PowerShell [`start-dev.ps1`](start-dev.ps1) tại thư mục gốc:
+
+```powershell
+.\start-dev.ps1
+```
+
+Script sẽ tự động:
+1. Khởi động hạ tầng PostgreSQL 18 (port `5433`) và Redis 7 (port `6379`) qua Docker.
+2. Mở một cửa sổ Terminal mới chạy **Backend API** với tính năng Hot-Reload (`dotnet watch`) tại `http://localhost:8080`.
+3. Mở một cửa sổ Terminal mới chạy **Frontend Client** (`npm run dev`) tại `http://localhost:5173`.
+
+---
+
+### Cách 2: Khởi chạy thủ công từng dịch vụ (Theo dõi log chi tiết)
+
+#### Bước 1: Khởi động cơ sở dữ liệu & Cache (Docker)
+```bash
+docker compose up -d ticketing-db ticketing-redis
+```
+
+#### Bước 2: Khởi chạy Backend API (.NET 10)
+```bash
+dotnet watch --project backend/src/Api/Ticketing.Api
+```
+*(Backend sẽ lắng nghe tại `http://localhost:8080`, hỗ trợ tự động reload khi sửa mã nguồn)*.
+
+#### Bước 3: Cấu hình và Khởi chạy Frontend (React 19)
+1. Đảm bảo cấu hình file `frontend/.env.development`:
+   - Chế độ kết nối API thật:
+     ```env
+     VITE_DATA_MODE=api
+     VITE_API_URL=http://localhost:8080
+     ```
+   - Chế độ dữ liệu mẫu demo (không cần backend):
+     ```env
+     VITE_DATA_MODE=demo
+     ```
+2. Cài đặt dependencies (lần đầu) và khởi chạy:
    ```bash
-   docker-compose up -d
+   cd frontend
+   npm install    # chỉ chạy lần đầu
+   npm run dev
    ```
+*(Frontend sẽ lắng nghe tại `http://localhost:5173`)*.
 
-2. **Kiểm tra và Build Backend:**
-   ```bash
-   dotnet build backend/Ticketing.slnx
-   ```
+---
 
-3. **Chạy toàn bộ các bài kiểm thử (Architecture & Integration Tests):**
-   ```bash
-   dotnet test backend/Ticketing.slnx
-   ```
+### 🌐 Bảng các địa chỉ truy cập hệ thống
 
-4. **Khởi chạy Host API:**
-   ```bash
-   dotnet run --project backend/src/Api/Ticketing.Api
-   ```
-   - Truy cập giao diện tài liệu API (Scalar/OpenAPI): `http://localhost:5000/openapi/v1.json` hoặc Swagger UI tương ứng.
-   - Kiểm tra trạng thái hệ thống: `http://localhost:5000/health`.
+| Dịch vụ | URL | Mô tả |
+|---|---|---|
+| **Frontend Web App** | [http://localhost:5173](http://localhost:5173) | Khám phá sự kiện, đặt giữ vé, thanh toán |
+| **Trang Đăng nhập / Đăng ký** | [http://localhost:5173/login](http://localhost:5173/login) | Xác thực tài khoản Khách hàng / Soát vé |
+| **Giao diện Soát vé QR (Staff)** | [http://localhost:5173/staff/check-in](http://localhost:5173/staff/check-in) | Quét mã vé điện tử tại cổng sự kiện |
+| **Backend API Host** | [http://localhost:8080](http://localhost:8080) | Cổng Minimal APIs chính của backend |
+| **OpenAPI Specification** | [http://localhost:8080/openapi/v1.json](http://localhost:8080/openapi/v1.json) | Tài liệu OpenAPI JSON tự động sinh |
+| **Health Check** | [http://localhost:8080/health](http://localhost:8080/health) | Kiểm tra trạng thái máy chủ Backend |
 
-### Frontend khách hàng và check-in
+---
 
-Frontend React 19 nằm trong `frontend/`. Chạy `cd frontend`, sau đó `npm ci` và `npm run dev`. Môi trường phát triển bật rõ ràng chế độ demo (`VITE_DATA_MODE=demo`) với dữ liệu mẫu lưu cục bộ; không có giao dịch tiền thật. Dùng `frontend/.env.example` làm mẫu production (`VITE_DATA_MODE=api`) để gọi backend qua `VITE_API_URL`.
+### Các lệnh kiểm thử hệ thống
 
-Các luồng gồm khám phá/lọc sự kiện, chi tiết và giữ vé 10 phút, checkout, vé QR, và trang check-in mobile. Camera cần chạy trên HTTPS hoặc localhost và người dùng cấp quyền camera. Sinh client/DTO types bằng `npm run api:generate` khi API đang chạy ở Development, với OpenAPI tại `/openapi/v1.json`; các module backend hiện chưa có endpoint nghiệp vụ nên client sinh từ spec hiện tại chưa thể cung cấp tích hợp bán vé/đăng nhập/check-in hoạt động. Chỉ checkout VNPay thật khi backend cung cấp endpoint tạo đơn và URL thanh toán.
-
-Kiểm tra frontend: `npm run build`, `npm run test:e2e` (Playwright Chromium; cài browser với `npx playwright install chromium`). CI chạy build và E2E riêng trong GitHub Actions. Có thể đóng gói SPA với `docker build -t ticketing-frontend ./frontend`; truyền `--build-arg VITE_API_URL=...` để trỏ tới backend.
+- **Kiểm tra ranh giới kiến trúc & tích hợp Backend:**
+  ```bash
+  dotnet test backend/Ticketing.slnx
+  ```
+- **Kiểm tra Typecheck Frontend:**
+  ```bash
+  cd frontend && npm run typecheck
+  ```
+- **Chạy kiểm thử E2E tự động (Playwright):**
+  ```bash
+  cd frontend && npm run test:e2e
+  ```
 
 ---
 

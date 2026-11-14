@@ -5,6 +5,7 @@ using Orders.Internal.Api;
 using CheckIn.Internal.Api;
 using Notifications.Internal.Api;
 using Ticketing.Infrastructure.Core;
+using Ticketing.Api.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +16,17 @@ builder.Services.AddInfrastructureCore(builder.Configuration);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 // ───────────────────────────────────────────────
 // 2. Nạp từng module nghiệp vụ
@@ -32,12 +44,16 @@ var app = builder.Build();
 // ───────────────────────────────────────────────
 // 3. Middleware Pipeline
 // ───────────────────────────────────────────────
+app.UseSecurityHeaders();
+app.UseCors();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
-// TODO (Giai đoạn 2): app.UseAuthentication(); app.UseAuthorization();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // ───────────────────────────────────────────────
 // 4. Health Check

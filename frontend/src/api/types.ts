@@ -54,3 +54,48 @@ export interface CheckoutInput {
 }
 
 export type CheckInStatus = "valid" | "used" | "cancelled" | "invalid";
+
+// ───────────────────────────────────────────────
+// Identity & Authentication Types
+// ───────────────────────────────────────────────
+export type UserRole = "Customer" | "Organizer" | "Staff" | "Admin" | "customer" | "staff";
+
+export interface UserSession {
+  name: string;
+  role: "customer" | "staff" | "organizer" | "admin";
+  email?: string;
+  userId?: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: string;
+  userId: string;
+  email: string;
+  fullName: string;
+  roles: string[];
+}
+
+export interface UserProfileResponse {
+  id: string;
+  email: string;
+  fullName: string;
+  phoneNumber?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  roles: string[];
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  fullName: string;
+  password: string;
+  phoneNumber?: string | null;
+}
+

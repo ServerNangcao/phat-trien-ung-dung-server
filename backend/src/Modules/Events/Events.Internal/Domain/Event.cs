@@ -5,7 +5,7 @@ namespace Events.Internal.Domain;
 internal sealed class Event : BaseEntity<Guid>
 {
     /// <summary>
-    /// Reference tới Identity module — KHÔNG có FK cross-schema.
+    /// Reference toi Identity module — KHONG co FK cross-schema.
     /// </summary>
     public Guid OrganizerId { get; private set; }
 
@@ -17,7 +17,7 @@ internal sealed class Event : BaseEntity<Guid>
     public string? Description { get; private set; }
 
     /// <summary>
-    /// S3/R2 object key cho ảnh bìa sự kiện.
+    /// S3/R2 object key cho anh bia su kien.
     /// </summary>
     public string? CoverImageKey { get; private set; }
 
@@ -27,12 +27,12 @@ internal sealed class Event : BaseEntity<Guid>
     public string? RejectReason { get; private set; }
 
     /// <summary>
-    /// Giá thấp nhất — denormalized từ Ticketing module.
+    /// Gia thap nhat — denormalized tu Ticketing module.
     /// </summary>
     public decimal? MinPrice { get; private set; }
 
     /// <summary>
-    /// Giá cao nhất — denormalized từ Ticketing module.
+    /// Gia cao nhat — denormalized tu Ticketing module.
     /// </summary>
     public decimal? MaxPrice { get; private set; }
 
@@ -91,12 +91,42 @@ internal sealed class Event : BaseEntity<Guid>
     }
 
     /// <summary>
-    /// Cập nhật khoảng giá vé — được gọi khi nhận TicketTypesChanged từ Ticketing module.
+    /// Cap nhat khoang gia ve — duoc goi khi nhan TicketTypesChanged tu Ticketing module.
     /// </summary>
     public void UpdatePriceRange(decimal? min, decimal? max)
     {
         MinPrice = min;
         MaxPrice = max;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Cap nhat thong tin su kien (chi cho phep o Draft / Rejected).
+    /// Chi cap nhat cac field duoc truyen (non-null).
+    /// </summary>
+    public void Update(
+        Guid? categoryId,
+        Guid? venueId,
+        string? title,
+        string? description,
+        DateTime? startsAt,
+        DateTime? endsAt)
+    {
+        if (categoryId.HasValue) CategoryId = categoryId.Value;
+        if (venueId.HasValue) VenueId = venueId.Value;
+        if (title is not null) Title = title;
+        if (description is not null) Description = description;
+        if (startsAt.HasValue) StartsAt = startsAt.Value;
+        if (endsAt.HasValue) EndsAt = endsAt.Value;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Cap nhat object key anh bia sau khi upload len R2.
+    /// </summary>
+    public void SetCoverImage(string objectKey)
+    {
+        CoverImageKey = objectKey;
         UpdatedAt = DateTime.UtcNow;
     }
 }

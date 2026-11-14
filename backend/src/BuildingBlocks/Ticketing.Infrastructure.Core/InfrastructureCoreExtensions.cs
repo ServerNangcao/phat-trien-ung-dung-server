@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Ticketing.Infrastructure.Core.Outbox;
-using Ticketing.SharedKernel;
 
 namespace Ticketing.Infrastructure.Core;
 
@@ -18,9 +17,6 @@ public static class InfrastructureCoreExtensions
     {
         // Outbox options
         services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
-
-        // Clock — singleton vì phi trạng thái
-        services.AddSingleton<IClock, SystemClock>();
 
         // Background workers
         services.AddHostedService<OutboxWorker>();

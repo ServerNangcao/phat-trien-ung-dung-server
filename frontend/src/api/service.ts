@@ -1,8 +1,35 @@
 import { apiClient, isDemoMode } from "./client";
 import { demoApi } from "./demo";
-import type { CheckInStatus, CheckoutInput, EventItem, PurchasedTicket, Reservation } from "./types";
+import type {
+  AuthResponse,
+  CheckInStatus,
+  CheckoutInput,
+  EventItem,
+  LoginRequest,
+  PurchasedTicket,
+  RegisterRequest,
+  Reservation,
+  UserProfileResponse,
+} from "./types";
 
 export const ticketingApi = {
+  auth: {
+    login: async (input: LoginRequest) => {
+      const { data } = await apiClient.post<AuthResponse>("/api/identity/login", input);
+      return data;
+    },
+    register: async (input: RegisterRequest) => {
+      const { data } = await apiClient.post<AuthResponse>("/api/identity/register", input);
+      return data;
+    },
+    profile: async () => {
+      const { data } = await apiClient.get<UserProfileResponse>("/api/identity/me");
+      return data;
+    },
+    changePassword: async (currentPassword: string, newPassword: string) => {
+      await apiClient.post("/api/identity/change-password", { currentPassword, newPassword });
+    },
+  },
   events: async (filters: { query?: string; category?: string; location?: string; maxPrice?: number; page?: number; limit?: number }) => {
     if (isDemoMode) return demoApi.events(filters);
     const { data } = await apiClient.get<{ items: EventItem[]; total: number }>("/api/events", { params: filters });

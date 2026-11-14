@@ -25,4 +25,13 @@ internal sealed class ApplicationUser : IdentityUser<Guid>
 
         return user;
     }
+
+    /// <summary>
+    /// Cập nhật hồ sơ cá nhân (FullName, PhoneNumber).
+    /// </summary>
+    public void UpdateProfile(string fullName, string? phoneNumber)
+    {
+        FullName = fullName;
+        PhoneNumber = phoneNumber;
+    }
 }
