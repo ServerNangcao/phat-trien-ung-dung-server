@@ -1,11 +1,40 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
 import { ArrowRight, Check, QrCode, Sparkles, UserRound } from "lucide-react";
 import { isDemoMode } from "../../../api/client";
 
 interface LoginPageProps {
   login: (role: "customer" | "staff", email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
+}
+
+function extractErrorMessage(exception: unknown, fallback: string): string {
+  if (axios.isAxiosError(exception) && exception.response?.data) {
+    const data = exception.response.data as {
+      detail?: string;
+      title?: string;
+      errors?: Record<string, string[]>;
+      message?: string;
+    };
+
+    let msg =
+      data.detail ||
+      (data.errors && typeof data.errors === "object" ? Object.values(data.errors).flat().join("; ") : undefined) ||
+      data.message ||
+      data.title;
+
+    if (msg) {
+      return msg
+        .replace(/Passwords must have at least one non alphanumeric character\.?/gi, "Mật khẩu phải chứa ít nhất 1 ký tự đặc biệt (!, @, #, $...).")
+        .replace(/Passwords must have at least one uppercase \('A'-'Z'\)\.?/gi, "Mật khẩu phải chứa ít nhất 1 chữ cái in hoa (A-Z).")
+        .replace(/Passwords must have at least one lowercase \('a'-'z'\)\.?/gi, "Mật khẩu phải chứa ít nhất 1 chữ cái thường (a-z).")
+        .replace(/Passwords must have at least one digit \('0'-'9'\)\.?/gi, "Mật khẩu phải chứa ít nhất 1 chữ số (0-9).")
+        .replace(/Passwords must be at least (\d+) characters\.?/gi, "Mật khẩu phải có ít nhất $1 ký tự.");
+    }
+  }
+
+  return (exception as Error)?.message || fallback;
 }
 
 export function LoginPage({ login, register }: LoginPageProps) {
@@ -62,8 +91,10 @@ export function LoginPage({ login, register }: LoginPageProps) {
       }
     } catch (exception) {
       setError(
-        (exception as Error).message ||
-          (mode === "login" ? "Không thể đăng nhập." : "Không thể tạo tài khoản."),
+        extractErrorMessage(
+          exception,
+          mode === "login" ? "Không thể đăng nhập." : "Không thể tạo tài khoản.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -204,7 +235,7 @@ export function LoginPage({ login, register }: LoginPageProps) {
               autoComplete={mode === "login" ? "current-password" : "new-password"}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder={mode === "register" ? "Ít nhất 8 ký tự" : "Nhập mật khẩu"}
+              placeholder={mode === "register" ? "Ít nhất 8 ký tự (hoa, thường, số, ký tự đặc biệt)" : "Nhập mật khẩu"}
             />
           </label>
 
