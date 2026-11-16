@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Ticketing.Api" />
     <InternalsVisibleTo Include="Events.Tests" />
     <InternalsVisibleTo Include="Architecture.Tests" />
     <InternalsVisibleTo Include="Integration.Tests" />

@@ -64,7 +64,7 @@ internal sealed class GetEventHandler(EventsDbContext db)
         @event.Title,
         @event.Slug,
         @event.Description,
-        CoverImageUrl: null, // URL được tạo theo yêu cầu (presigned), không lưu URL cố định
+        CoverImageUrl: @event.CoverImageKey,
         @event.StartsAt,
         @event.EndsAt,
         @event.Status,

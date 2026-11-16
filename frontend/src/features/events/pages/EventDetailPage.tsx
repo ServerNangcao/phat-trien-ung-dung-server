@@ -19,12 +19,18 @@ import { TicketTierOption } from "../components/TicketTierOption";
 
 const currency = new Intl.NumberFormat("vi-VN");
 const formatMoney = (price: number) => `${currency.format(price)}đ`;
-const formatDate = (date: string) =>
-  new Intl.DateTimeFormat("vi-VN", {
+const formatDate = (date?: string) => {
+  if (!date) return "Sắp diễn ra";
+  const d = date.includes("T") ? new Date(date) : new Date(`${date}T12:00:00`);
+  if (isNaN(d.getTime())) return date;
+  return new Intl.DateTimeFormat("vi-VN", {
     weekday: "short",
     day: "2-digit",
     month: "short",
-  }).format(new Date(`${date}T12:00:00`));
+  }).format(d);
+};
+
+const DEFAULT_COVER = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85";
 
 export function EventDetailPage() {
   const { id = "" } = useParams();
@@ -53,7 +59,19 @@ export function EventDetailPage() {
   if (eventQuery.isError || !eventQuery.data) return <PageMissing />;
 
   const event = eventQuery.data;
-  const tier = event.tiers.find((item) => item.id === selectedTier) ?? event.tiers[0];
+  const tiers =
+    event.tiers && event.tiers.length > 0
+      ? event.tiers
+      : [
+          {
+            id: "standard",
+            name: "Vé tiêu chuẩn",
+            price: 250000,
+            remaining: 100,
+            description: "Vé vào cổng tiêu chuẩn",
+          },
+        ];
+  const tier = tiers.find((item) => item.id === selectedTier) ?? tiers[0];
 
   return (
     <div className="mx-auto max-w-[1240px] page-enter px-5 pb-20 pt-7 lg:px-8">
@@ -62,7 +80,13 @@ export function EventDetailPage() {
       </Link>
 
       <div className="detail-hero">
-        <img src={event.image} alt="" />
+        <img
+          src={event.image || DEFAULT_COVER}
+          alt={event.title}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = DEFAULT_COVER;
+          }}
+        />
         <div className="detail-hero-shade" />
         <div className="detail-hero-copy">
           <span className="event-type !static">{event.category}</span>
@@ -148,7 +172,7 @@ export function EventDetailPage() {
           </h2>
 
           <div className="tier-list">
-            {event.tiers.map((item) => (
+            {tiers.map((item) => (
               <TicketTierOption
                 key={item.id}
                 tier={item}

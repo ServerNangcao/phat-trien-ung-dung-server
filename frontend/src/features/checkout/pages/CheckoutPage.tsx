@@ -106,7 +106,7 @@ export function CheckoutPage() {
   }
 
   const event = eventQuery.data;
-  const tier = event?.tiers.find((item) => item.id === reservation.tierId);
+  const tier = event?.tiers?.find((item) => item.id === reservation.tierId) ?? event?.tiers?.[0];
   const time = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (

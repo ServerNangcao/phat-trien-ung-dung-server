@@ -50,6 +50,7 @@ app.UseCors();
 if (app.Environment.IsDevelopment())
 {
     await app.Services.ApplyDatabaseMigrationsAsync();
+    await Ticketing.Api.DataSeeder.SeedAsync(app.Services);
     app.MapOpenApi();
 }
 

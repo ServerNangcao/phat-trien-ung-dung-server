@@ -5,12 +5,18 @@ import type { EventItem } from "../../../api/types";
 
 const currency = new Intl.NumberFormat("vi-VN");
 const formatMoney = (price: number) => `${currency.format(price)}đ`;
-const formatDate = (date: string) =>
-  new Intl.DateTimeFormat("vi-VN", {
+const formatDate = (date?: string) => {
+  if (!date) return "Sắp diễn ra";
+  const d = date.includes("T") ? new Date(date) : new Date(`${date}T12:00:00`);
+  if (isNaN(d.getTime())) return date;
+  return new Intl.DateTimeFormat("vi-VN", {
     weekday: "short",
     day: "2-digit",
     month: "short",
-  }).format(new Date(`${date}T12:00:00`));
+  }).format(d);
+};
+
+const DEFAULT_COVER = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85";
 
 interface EventCardProps {
   event: EventItem;
@@ -18,13 +24,24 @@ interface EventCardProps {
 
 export function EventCard({ event }: EventCardProps) {
   const [isSaved, setIsSaved] = useState(false);
-  const lowestPrice = Math.min(...event.tiers.map((tier) => tier.price));
+  const lowestPrice =
+    event.tiers && event.tiers.length > 0
+      ? Math.min(...event.tiers.map((tier) => tier.price))
+      : ((event as { minPrice?: number }).minPrice ?? 0);
 
   return (
     <Link to={`/events/${event.id}`} className="event-card group">
       <div className="event-image-wrap">
-        <img src={event.image} alt="" className="event-image" loading="lazy" />
-        <span className="event-type">{event.category}</span>
+        <img
+          src={event.image || DEFAULT_COVER}
+          alt={event.title}
+          className="event-image"
+          loading="lazy"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = DEFAULT_COVER;
+          }}
+        />
+        <span className="event-type">{event.category || "Sự kiện"}</span>
         <button
           type="button"
           aria-label="Lưu sự kiện"

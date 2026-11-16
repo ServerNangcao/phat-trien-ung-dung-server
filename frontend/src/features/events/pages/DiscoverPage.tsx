@@ -123,12 +123,19 @@ export function DiscoverPage() {
             <div className="hero-art-bottom">
               <span className="hero-date">
                 <CalendarDays size={15} />{" "}
-                {featured
-                  ? new Intl.DateTimeFormat("vi-VN", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                    }).format(new Date(`${featured.date}T12:00:00`))
+                {featured?.date
+                  ? (() => {
+                      const d = featured.date.includes("T")
+                        ? new Date(featured.date)
+                        : new Date(`${featured.date}T12:00:00`);
+                      return isNaN(d.getTime())
+                        ? featured.date
+                        : new Intl.DateTimeFormat("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          }).format(d);
+                    })()
                   : "SẮP DIỄN RA"}
               </span>
               <h2>{featured?.title ?? "Đang tải sự kiện..."}</h2>
@@ -291,7 +298,7 @@ export function DiscoverPage() {
               <div key={item} className="skeleton-card" />
             ))}
           </div>
-        ) : data?.items.length ? (
+        ) : data?.items && data.items.length > 0 ? (
           <>
             <div className="event-grid">
               {data.items.map((event) => (
