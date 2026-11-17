@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────
 # CI Pipeline — Ticketing Modular Monolith
 # Runs on every push and PR to main/develop
-# Steps: restore → build → arch tests → docker build
+# Steps: restore → build → arch tests → Docker build → frontend E2E
 # ──────────────────────────────────────────────────────────
 
 name: CI
@@ -11,6 +11,9 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+
+permissions:
+  contents: read
 
 env:
   DOTNET_VERSION: '10.0.x'
@@ -40,6 +43,12 @@ jobs:
       - name: Build solution
         run: dotnet build --no-restore -c Release
 
+      - name: Non-generic Result factory check
+        run: bash ../scripts/check-bare-result.sh
+
+      - name: Run tests
+        run: dotnet test --no-build -c Release --verbosity normal
+
       - name: Run Architecture Tests
         run: dotnet test tests/Architecture.Tests/Architecture.Tests.csproj --no-build -c Release --verbosity normal
 
@@ -55,7 +64,7 @@ jobs:
       - name: Build Docker image
         run: docker build -f backend/Dockerfile -t ticketing-api:ci .
 
-      # Kiểm tra csproj trong Dockerfile — nếu thêm project mới mà quên thêm COPY thì fail ở đây
+      # Verify csproj in Dockerfile — if new project added but COPY missing, fail here
       - name: Verify container starts
         run: |
           docker run -d --name ci-test \
@@ -93,6 +102,6 @@ jobs:
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
-
       - name: Run end-to-end tests
+        run: npm run test:e2e
         run: npm run test:e2e
