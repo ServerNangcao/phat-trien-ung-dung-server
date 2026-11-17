@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Ticketing.Contracts;
 using Ticketing.Infrastructure.Core;
 using Ticketing.Internal.Infrastructure;
 
@@ -23,6 +24,8 @@ public static class TicketingModule
             configuration: configuration);
 
         services.AddModuleValidators(typeof(TicketingModule).Assembly);
+
+        services.AddScoped<ITicketingModuleApi, TicketingModuleApi>();
 
         return services;
     }

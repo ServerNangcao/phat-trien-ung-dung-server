@@ -1,3 +1,4 @@
+using CheckIn.Contracts;
 using CheckIn.Internal.Infrastructure;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
@@ -23,6 +24,8 @@ public static class CheckInModule
             configuration: configuration);
 
         services.AddModuleValidators(typeof(CheckInModule).Assembly);
+
+        services.AddScoped<ICheckInModuleApi, CheckInModuleApi>();
 
         return services;
     }

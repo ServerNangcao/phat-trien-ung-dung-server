@@ -15,6 +15,8 @@ builder.Services.AddInfrastructureCore(builder.Configuration);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+builder.Services.AddAuthentication();
+builder.Services.AddAuthorization();
 
 // ───────────────────────────────────────────────
 // 2. Nạp từng module nghiệp vụ
@@ -37,7 +39,8 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 }
 
-// TODO (Giai đoạn 2): app.UseAuthentication(); app.UseAuthorization();
+app.UseAuthentication();
+app.UseAuthorization();
 
 // ───────────────────────────────────────────────
 // 4. Health Check

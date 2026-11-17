@@ -1,22 +1,27 @@
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
+using Ticketing.Infrastructure.Core.Storage;
 
 namespace Events.Internal.Infrastructure.Storage;
 
 /// <summary>
-/// Cài đặt IR2StorageService dùng AWS SDK trỏ vào Cloudflare R2.
-/// R2 tương thích hoàn toàn với S3 API — chỉ cần đổi ServiceURL thành endpoint R2.
+/// Cài đặt IR2StorageService dùng IFileStorage hoặc AWS SDK trỏ vào Cloudflare R2 / MinIO.
 /// </summary>
 internal sealed class R2StorageService : IR2StorageService
 {
-    private readonly IAmazonS3 _s3Client;
-    private readonly R2Options _options;
+    private readonly IFileStorage? _fileStorage;
+    private readonly IAmazonS3? _s3Client;
+    private readonly R2Options? _options;
 
-    public R2StorageService(IAmazonS3 s3Client, IOptions<R2Options> options)
+    public R2StorageService(
+        IFileStorage? fileStorage = null,
+        IAmazonS3? s3Client = null,
+        IOptions<R2Options>? options = null)
     {
+        _fileStorage = fileStorage;
         _s3Client = s3Client;
-        _options = options.Value;
+        _options = options?.Value;
     }
 
     public async Task<string> GeneratePresignedPutUrlAsync(
@@ -25,6 +30,12 @@ internal sealed class R2StorageService : IR2StorageService
         int expiresInMinutes = 15,
         CancellationToken cancellationToken = default)
     {
+        if (_fileStorage is not null)
+            return await _fileStorage.GeneratePresignedPutUrlAsync(objectKey, contentType, expiresInMinutes, cancellationToken);
+
+        if (_s3Client is null || _options is null)
+            throw new InvalidOperationException("Chưa cấu hình dịch vụ lưu trữ.");
+
         var request = new GetPreSignedUrlRequest
         {
             BucketName = _options.BucketName,
@@ -34,9 +45,7 @@ internal sealed class R2StorageService : IR2StorageService
             Expires = DateTime.UtcNow.AddMinutes(expiresInMinutes),
         };
 
-        // GetPreSignedURL là synchronous trong AWS SDK v3
-        var url = await Task.FromResult(_s3Client.GetPreSignedURL(request));
-        return url;
+        return await Task.FromResult(_s3Client.GetPreSignedURL(request));
     }
 
     public async Task<string> GeneratePresignedGetUrlAsync(
@@ -44,6 +53,12 @@ internal sealed class R2StorageService : IR2StorageService
         int expiresInMinutes = 60,
         CancellationToken cancellationToken = default)
     {
+        if (_fileStorage is not null)
+            return await _fileStorage.GeneratePresignedGetUrlAsync(objectKey, expiresInMinutes, cancellationToken);
+
+        if (_s3Client is null || _options is null)
+            throw new InvalidOperationException("Chưa cấu hình dịch vụ lưu trữ.");
+
         var request = new GetPreSignedUrlRequest
         {
             BucketName = _options.BucketName,
@@ -52,12 +67,20 @@ internal sealed class R2StorageService : IR2StorageService
             Expires = DateTime.UtcNow.AddMinutes(expiresInMinutes),
         };
 
-        var url = await Task.FromResult(_s3Client.GetPreSignedURL(request));
-        return url;
+        return await Task.FromResult(_s3Client.GetPreSignedURL(request));
     }
 
     public async Task DeleteObjectAsync(string objectKey, CancellationToken cancellationToken = default)
     {
+        if (_fileStorage is not null)
+        {
+            await _fileStorage.DeleteObjectAsync(objectKey, cancellationToken);
+            return;
+        }
+
+        if (_s3Client is null || _options is null)
+            throw new InvalidOperationException("Chưa cấu hình dịch vụ lưu trữ.");
+
         var request = new DeleteObjectRequest
         {
             BucketName = _options.BucketName,

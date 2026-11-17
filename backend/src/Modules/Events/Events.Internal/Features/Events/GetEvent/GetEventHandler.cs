@@ -1,5 +1,6 @@
 using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
+using Events.Internal.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
 using Ticketing.SharedKernel;
 
@@ -27,12 +28,19 @@ internal sealed record EventDetailResponse(
 internal sealed record CategoryDto(Guid Id, string Name, string Slug);
 internal sealed record VenueDto(Guid Id, string Name, string Address, string City, double? Latitude, double? Longitude, int? Capacity);
 
-internal sealed class GetEventHandler(EventsDbContext db)
+internal sealed class GetEventHandler(EventsDbContext db, IEventsCacheService? cache = null)
 {
     public async Task<Result<EventDetailResponse>> HandleAsync(
         Guid eventId,
         CancellationToken cancellationToken = default)
     {
+        if (cache is not null)
+        {
+            var cached = await cache.GetEventDetailAsync(eventId, cancellationToken);
+            if (cached is not null)
+                return Result.Success(cached);
+        }
+
         var @event = await db.Events
             .Include(e => e.Category)
             .Include(e => e.Venue)
@@ -41,13 +49,27 @@ internal sealed class GetEventHandler(EventsDbContext db)
         if (@event is null)
             return Result.NotFound<EventDetailResponse>("Sự kiện không tồn tại.");
 
-        return Result.Success(MapToResponse(@event));
+        var response = MapToResponse(@event);
+
+        if (cache is not null)
+        {
+            await cache.SetEventDetailAsync(response, cancellationToken: cancellationToken);
+        }
+
+        return Result.Success(response);
     }
 
     public async Task<Result<EventDetailResponse>> HandleBySlugAsync(
         string slug,
         CancellationToken cancellationToken = default)
     {
+        if (cache is not null)
+        {
+            var cached = await cache.GetEventBySlugAsync(slug, cancellationToken);
+            if (cached is not null)
+                return Result.Success(cached);
+        }
+
         var @event = await db.Events
             .Include(e => e.Category)
             .Include(e => e.Venue)
@@ -56,7 +78,14 @@ internal sealed class GetEventHandler(EventsDbContext db)
         if (@event is null)
             return Result.NotFound<EventDetailResponse>("Sự kiện không tồn tại.");
 
-        return Result.Success(MapToResponse(@event));
+        var response = MapToResponse(@event);
+
+        if (cache is not null)
+        {
+            await cache.SetEventDetailAsync(response, cancellationToken: cancellationToken);
+        }
+
+        return Result.Success(response);
     }
 
     private static EventDetailResponse MapToResponse(Event @event) => new(

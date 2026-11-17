@@ -1,5 +1,6 @@
 using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
+using Events.Internal.Infrastructure.Caching;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
 using Ticketing.SharedKernel;
@@ -34,7 +35,8 @@ internal sealed class UpdateEventValidator : AbstractValidator<UpdateEventReques
 
 internal sealed class UpdateEventHandler(
     EventsDbContext db,
-    IValidator<UpdateEventRequest> validator)
+    IValidator<UpdateEventRequest> validator,
+    IEventsCacheService? cache = null)
 {
     public async Task<Result> HandleAsync(
         Guid eventId,
@@ -81,6 +83,10 @@ internal sealed class UpdateEventHandler(
             request.EndsAt);
 
         await db.SaveChangesAsync(cancellationToken);
+
+        if (cache is not null)
+            await cache.InvalidateEventAsync(@event.Id, @event.Slug, cancellationToken);
+
         return Result.Success();
     }
 }

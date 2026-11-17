@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Orders.Contracts;
 using Orders.Internal.Infrastructure;
 using Ticketing.Infrastructure.Core;
 
@@ -23,6 +24,8 @@ public static class OrdersModule
             configuration: configuration);
 
         services.AddModuleValidators(typeof(OrdersModule).Assembly);
+
+        services.AddScoped<IOrdersModuleApi, OrdersModuleApi>();
 
         return services;
     }

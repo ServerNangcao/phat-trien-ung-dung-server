@@ -11,4 +11,5 @@ internal static class EventStatus
     public const string OnSale = nameof(OnSale);
     public const string Ended = nameof(Ended);
     public const string Rejected = nameof(Rejected);
+    public const string Cancelled = nameof(Cancelled);
 }
