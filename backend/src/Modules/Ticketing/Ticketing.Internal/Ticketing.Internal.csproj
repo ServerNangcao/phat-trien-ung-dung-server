@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>Ticketing.Internal</RootNamespace>
@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Ticketing.Api" />
     <InternalsVisibleTo Include="Ticketing.Tests" />
     <InternalsVisibleTo Include="Architecture.Tests" />
     <InternalsVisibleTo Include="Integration.Tests" />

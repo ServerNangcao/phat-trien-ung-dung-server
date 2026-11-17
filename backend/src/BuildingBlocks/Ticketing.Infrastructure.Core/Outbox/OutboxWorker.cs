@@ -127,14 +127,16 @@ public sealed class OutboxWorker : BackgroundService
     {
         // Dùng raw SQL với FOR UPDATE SKIP LOCKED cho Postgres
         // để nhiều instance không xử lý trùng event
+        var sql = $"""
+            SELECT * FROM "{dbContext.Schema}"."OutboxMessages"
+            WHERE "ProcessedAt" IS NULL
+            ORDER BY "CreatedAt"
+            LIMIT {_options.BatchSize}
+            FOR UPDATE SKIP LOCKED
+            """;
+
         var messages = await dbContext.OutboxMessages
-            .FromSqlInterpolated($"""
-                SELECT * FROM "{dbContext.Schema}"."OutboxMessages"
-                WHERE "ProcessedAt" IS NULL
-                ORDER BY "CreatedAt"
-                LIMIT {_options.BatchSize}
-                FOR UPDATE SKIP LOCKED
-            """)
+            .FromSqlRaw(sql)
             .ToListAsync(cancellationToken);
 
         if (messages.Count == 0)

@@ -28,6 +28,9 @@ frontend/test-results/
 .agents/
 .agent/
 
+## Media & Screenshots
+screenshots/
+
 ## Markdown docs (except README.md)
 *.md
 docs/**/*.md

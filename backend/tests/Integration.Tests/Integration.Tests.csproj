@@ -18,8 +18,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\BuildingBlocks\Ticketing.SharedKernel\Ticketing.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\BuildingBlocks\Ticketing.Infrastructure.Core\Ticketing.Infrastructure.Core.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Identity.Contracts\Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Identity.Internal\Identity.Internal.csproj" />
     <ProjectReference Include="..\..\src\Modules\Notifications\Notifications.Contracts\Notifications.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\Notifications\Notifications.Internal\Notifications.Internal.csproj" />
+    <ProjectReference Include="..\..\src\Api\Ticketing.Api\Ticketing.Api.csproj" />
   </ItemGroup>
 
 </Project>
