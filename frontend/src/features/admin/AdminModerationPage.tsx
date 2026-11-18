@@ -32,7 +32,7 @@ export function AdminModerationPage() {
         {events.map((ev) => (
           <article
             key={ev.id}
-            className="flex flex-col justify-between gap-4 rounded-2xl border border-[#E6E4DD] bg-white p-6 md:flex-row md:items-center"
+            className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 text-[#182226] md:flex-row md:items-center"
           >
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2.5">
@@ -47,7 +47,7 @@ export function AdminModerationPage() {
                 >
                   {ev.status}
                 </StatusBadge>
-                <span className="text-xs font-bold uppercase tracking-wider text-[#647075]">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#526066]">
                   {ev.category}
                 </span>
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#526066]">
@@ -57,7 +57,7 @@ export function AdminModerationPage() {
               </div>
 
               <h2 className="text-lg font-extrabold text-[#182226]">{ev.title}</h2>
-              <p className="text-sm text-[#647075]">{ev.description}</p>
+              <p className="text-sm text-[#526066]">{ev.description}</p>
 
               <div className="flex flex-wrap gap-4 pt-1 text-xs text-[#526066]">
                 <span className="inline-flex items-center gap-1.5">
@@ -104,11 +104,11 @@ export function AdminModerationPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="reject-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
         >
           <form
             onSubmit={handleRejectSubmit}
-            className="w-full max-w-md rounded-2xl border border-[#E6E4DD] bg-white p-6 shadow-xl space-y-4"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-[#182226] shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between">
               <h2 id="reject-modal-title" className="text-lg font-extrabold text-[#182226]">
@@ -118,12 +118,12 @@ export function AdminModerationPage() {
                 type="button"
                 aria-label="Đóng hộp thoại"
                 onClick={() => setRejectTarget(null)}
-                className="rounded-lg p-1.5 text-[#647075] hover:bg-[#F3ECE2] cursor-pointer"
+                className="rounded-lg p-1.5 text-[#526066] hover:bg-black/5 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
-            <p className="text-xs text-[#647075]">
+            <p className="text-xs text-[#526066]">
               Sự kiện: <b className="text-[#182226]">{rejectTarget.title}</b>
             </p>
             <div>
@@ -134,7 +134,7 @@ export function AdminModerationPage() {
                 id="reject-reason"
                 rows={4}
                 required
-                className="w-full rounded-xl border border-[#E6E4DD] bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none focus:border-[#F05A3E] focus-visible:ring-2 focus-visible:ring-[#F05A3E]/25"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25"
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
               />

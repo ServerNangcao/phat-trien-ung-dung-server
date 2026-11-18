@@ -65,22 +65,22 @@ export function OrganizerAnalyticsPage() {
         ].map((kpi) => {
           const Icon = kpi.icon;
           return (
-            <div key={kpi.label} className="rounded-2xl border border-[#E6E4DD] bg-white p-5">
-              <div className="flex items-center justify-between text-xs font-semibold text-[#647075]">
+            <div key={kpi.label} className="rounded-2xl border border-slate-200 bg-white p-5 text-[#182226]">
+              <div className="flex items-center justify-between text-xs font-semibold text-[#526066]">
                 <span>{kpi.label}</span>
-                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#F3ECE2] text-[#F05A3E]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-[#F05B45]">
                   <Icon size={16} />
                 </span>
               </div>
               <p className="mt-3 text-2xl font-extrabold tracking-tight text-[#182226]">{kpi.value}</p>
-              <p className="mt-1 text-xs text-[#647075]">{kpi.hint}</p>
+              <p className="mt-1 text-xs text-[#526066]">{kpi.hint}</p>
             </div>
           );
         })}
       </div>
 
       <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="lg:col-span-7 rounded-2xl border border-[#E6E4DD] bg-white p-6">
+        <div className="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-6 text-[#182226]">
           <h2 className="text-base font-extrabold text-[#182226]">Doanh thu &amp; lấp đầy theo sự kiện</h2>
           <div className="mt-5 space-y-5">
             {events.map((ev) => {
@@ -107,13 +107,13 @@ export function OrganizerAnalyticsPage() {
                     </div>
                     <span className="font-extrabold text-[#182226]">{formatVnd(rev)}</span>
                   </div>
-                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#EEECE6]">
+                  <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className="h-full rounded-full bg-[#F05A3E] transition-all duration-300"
+                      className="h-full rounded-full bg-[#F05B45] transition-all duration-300"
                       style={{ width: `${pct}%` }}
                     />
                   </div>
-                  <div className="flex justify-between text-xs text-[#647075]">
+                  <div className="flex justify-between text-xs text-[#526066]">
                     <span>{sold} / {total} vé đã bán</span>
                     <span>{pct}% lấp đầy</span>
                   </div>
@@ -123,19 +123,19 @@ export function OrganizerAnalyticsPage() {
           </div>
         </div>
 
-        <div className="lg:col-span-5 rounded-2xl border border-[#E6E4DD] bg-white p-6">
+        <div className="lg:col-span-5 rounded-2xl border border-slate-200 bg-white p-6 text-[#182226]">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-extrabold text-[#182226]">Đơn hàng mới nhất</h2>
-            <Link to="/organizer/orders" className="text-xs font-bold text-[#F05A3E] hover:underline">
+            <Link to="/organizer/orders" className="text-xs font-bold text-[#D94735] hover:underline">
               Xem tất cả
             </Link>
           </div>
-          <div className="mt-4 divide-y divide-[#EEECE6]">
+          <div className="mt-4 divide-y divide-slate-200">
             {orders.slice(0, 4).map((order) => (
               <div key={order.orderCode} className="flex items-center justify-between gap-3 py-3 text-xs">
                 <div className="min-w-0">
                   <p className="truncate font-bold text-[#182226]">{order.buyerName}</p>
-                  <p className="truncate text-[#647075]">
+                  <p className="truncate text-[#526066]">
                     {order.orderCode} · {order.tierName} × {order.quantity}
                   </p>
                 </div>

@@ -96,7 +96,7 @@ function useSession() {
 function App() {
   const session = useSession();
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen bg-[#0B0F17] text-[#F3F5F8]">
       <Routes>
         <Route element={<SiteLayout user={session.user} logout={session.logout} />}>
           <Route path="/" element={<DiscoverPage />} />
@@ -133,17 +133,17 @@ function SiteLayout({ user, logout }: { user: UserSession | null; logout: () => 
       <header className="site-header">
         <div className="mx-auto flex h-[76px] max-w-[1240px] items-center justify-between px-5 lg:px-8">
           <Link to="/" className="brand" aria-label="Ticketing trang chủ"><span className="brand-mark"><Ticket size={21} strokeWidth={2.5} /></span><span>ticketing<span className="brand-dot">.</span></span></Link>
-          <nav className="hidden items-center gap-7 text-[14px] font-semibold text-slate-600 md:flex">
-            <a href="/#events" className="hover:text-coral">Khám phá</a>
-            <a href="/#categories" className="hover:text-coral">Danh mục</a>
-            {isOrganizer && <Link to="/organizer/analytics" className="hover:text-coral">Ban tổ chức</Link>}
-            {isAdmin && <Link to="/admin/moderation" className="hover:text-coral">Quản trị</Link>}
-            {isStaff && <Link to="/staff/check-in" className="hover:text-coral">Soát vé</Link>}
+          <nav className="hidden items-center gap-7 text-[14px] font-semibold text-white/90 md:flex">
+            <a href="/#events" className="hover:text-white transition-colors">Khám phá</a>
+            <a href="/#categories" className="hover:text-white transition-colors">Danh mục</a>
+            {isOrganizer && <Link to="/organizer/analytics" className="hover:text-white transition-colors">Ban tổ chức</Link>}
+            {isAdmin && <Link to="/admin/moderation" className="hover:text-white transition-colors">Quản trị</Link>}
+            {isStaff && <Link to="/staff/check-in" className="hover:text-white transition-colors">Soát vé</Link>}
           </nav>
           <div className="hidden items-center gap-3 md:flex">
             <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi"><TicketCheck size={19} /><span>Vé của tôi</span></Link>
             {user && <Link to="/profile" className="btn-outline !px-3.5 !py-2">Hồ sơ</Link>}
-            {user ? <div className="flex items-center gap-3"><span className="text-sm font-semibold">{user.name.split(" · ")[0]}</span><button className="btn-quiet" onClick={logout}>Đăng xuất</button></div>
+            {user ? <div className="flex items-center gap-3"><span className="text-sm font-semibold text-white">{user.name.split(" · ")[0]}</span><button className="btn-quiet" onClick={logout}>Đăng xuất</button></div>
               : <Link to="/login" className="btn-outline">Đăng nhập</Link>}
             {isOrganizer && <Link to="/organizer/builder" className="btn-primary !px-5 !py-2.5">Tổ chức sự kiện</Link>}
           </div>
@@ -171,7 +171,7 @@ function OutletContextSpacer() {
 }
 
 function Footer() {
-  return <footer id="about" className="footer-wrap"><div className="mx-auto flex max-w-[1240px] flex-col gap-6 px-5 py-9 md:flex-row md:items-center md:justify-between lg:px-8"><Link to="/" className="brand"><span className="brand-mark"><Ticket size={19} /></span><span>ticketing<span className="brand-dot">.</span></span></Link><p className="text-sm text-slate-500">Tìm điều khiến bạn háo hức. ✦ © 2026 Ticketing</p><div className="flex gap-5 text-sm font-medium text-slate-500"><a href="#events">Khám phá</a><a href="mailto:hello@ticketing.vn">Trợ giúp</a></div></div></footer>;
+  return <footer id="about" className="footer-wrap"><div className="mx-auto flex max-w-[1240px] flex-col gap-6 px-5 py-9 md:flex-row md:items-center md:justify-between lg:px-8"><Link to="/" className="brand"><span className="brand-mark"><Ticket size={19} /></span><span>ticketing<span className="brand-dot">.</span></span></Link><p className="text-sm text-white/90">Tìm điều khiến bạn háo hức. ✦ © 2026 Ticketing</p><div className="flex gap-5 text-sm font-semibold text-white"><a href="#events" className="hover:underline">Khám phá</a><a href="mailto:hello@ticketing.vn" className="hover:underline">Trợ giúp</a></div></div></footer>;
 }
 
 function DiscoverPage() {
@@ -243,21 +243,24 @@ function DiscoverPage() {
         <div className="trust-row"><span><ShieldCheck size={16} /> Thanh toán an toàn</span><span><BadgeCheck size={16} /> Vé điện tử xác thực</span><span><Headphones size={16} /> Hỗ trợ tận tâm</span><span className="trust-note">Điều hay đang chờ bạn <ArrowDown size={14} /></span></div>
       </section>
 
-      <section id="categories" className="mx-auto max-w-[1240px] scroll-mt-24 px-5 pt-12 lg:px-8">
-        <div className="section-heading"><div><div className="eyebrow muted-eyebrow">CHỌN TÂM TRẠNG CỦA BẠN</div><h2 className="section-title">Hôm nay bạn muốn <em>đi đâu?</em></h2></div><Link to="#events" className="text-link">Tất cả danh mục <ArrowRight size={16} /></Link></div>
-        <div className="category-scroller">
-          {[
-            { label: "Âm nhạc", mark: "♫", className: "category-music" },
-            { label: "Nghệ thuật", mark: "✳", className: "category-art" },
-            { label: "Hội thảo", mark: "◉", className: "category-talk" },
-            { label: "Ẩm thực", mark: "⌁", className: "category-food" },
-            { label: "Thể thao", mark: "↗", className: "category-sport" },
-          ].map((item) => <button key={item.label} className={`category-tile ${item.className} ${category === item.label ? "category-selected" : ""}`} onClick={() => handleFilter(setCategory, category === item.label ? "Tất cả" : item.label)}><span className="category-symbol">{item.mark}</span><span>{item.label}</span><ArrowUpRight size={16} className="category-arrow" /></button>)}
+      <section id="categories" className="mx-auto max-w-[1240px] scroll-mt-24 px-5 pt-10 lg:px-8">
+        <div className="section-surface">
+          <div className="section-heading"><div><div className="eyebrow muted-eyebrow">CHỌN TÂM TRẠNG CỦA BẠN</div><h2 className="section-title">Hôm nay bạn muốn <em>đi đâu?</em></h2></div><Link to="#events" className="text-link">Tất cả danh mục <ArrowRight size={16} /></Link></div>
+          <div className="category-scroller">
+            {[
+              { label: "Âm nhạc", mark: "♫", className: "category-music" },
+              { label: "Nghệ thuật", mark: "✳", className: "category-art" },
+              { label: "Hội thảo", mark: "◉", className: "category-talk" },
+              { label: "Ẩm thực", mark: "⌁", className: "category-food" },
+              { label: "Thể thao", mark: "↗", className: "category-sport" },
+            ].map((item) => <button key={item.label} className={`category-tile ${item.className} ${category === item.label ? "category-selected" : ""}`} onClick={() => handleFilter(setCategory, category === item.label ? "Tất cả" : item.label)}><span className="category-symbol">{item.mark}</span><span>{item.label}</span><ArrowUpRight size={16} className="category-arrow" /></button>)}
+          </div>
         </div>
       </section>
 
-      <section id="events" className="mx-auto max-w-[1240px] scroll-mt-24 px-5 pb-20 pt-16 lg:px-8">
-        <div className="section-heading events-heading"><div><div className="eyebrow muted-eyebrow">LỊCH TRÌNH HAY HO</div><h2 className="section-title">Sự kiện dành cho <em>bạn.</em></h2></div><span className="event-count">{data?.total ?? "—"} SỰ KIỆN</span></div>
+      <section id="events" className="mx-auto max-w-[1240px] scroll-mt-24 px-5 pb-20 pt-10 lg:px-8">
+        <div className="section-surface">
+          <div className="section-heading events-heading"><div><div className="eyebrow muted-eyebrow">LỊCH TRÌNH HAY HO</div><h2 className="section-title">Sự kiện dành cho <em>bạn.</em></h2></div><span className="event-count">{data?.total ?? "—"} SỰ KIỆN</span></div>
         <div className="filter-bar">
           <label className="search-field"><Search size={18} /><input value={query} onChange={(event) => handleFilter(setQuery, event.target.value)} placeholder="Bạn đang tìm điều gì?" aria-label="Tìm sự kiện" /><kbd>⌘ K</kbd></label>
           <label className="filter-select"><MapPin size={16} /><select value={location} onChange={(event) => handleFilter(setLocation, event.target.value)} aria-label="Địa điểm">{locations.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={14} /></label>
@@ -272,6 +275,7 @@ function DiscoverPage() {
           </div>
           {totalPages > 1 && <div className="pagination"><button disabled={page === 1} aria-label="Trang trước" onClick={() => setPage(page - 1)}><ChevronLeft size={17} /></button><span>Trang <b>{page}</b> / {totalPages}</span><button disabled={page === totalPages} aria-label="Trang sau" onClick={() => setPage(page + 1)}><ChevronRight size={17} /></button></div>}
         </> : <div className="empty-state"><Compass size={28} /><h3>Chưa có sự kiện phù hợp</h3><p>Thử đổi từ khóa hoặc bộ lọc để khám phá thêm nhé.</p><button className="btn-outline" onClick={() => {setQuery(""); setCategory("Tất cả"); setLocation("Tất cả địa điểm"); setPrice("all");}}>Xóa bộ lọc</button></div>}
+        </div>
       </section>
     </div>
   );

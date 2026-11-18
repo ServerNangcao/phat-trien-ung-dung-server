@@ -7,7 +7,7 @@ import { StatusBadge } from "../../components/ui/StatusBadge";
 type ProfileTab = "info" | "vat" | "security";
 
 const inputClass =
-  "w-full rounded-xl border border-[#E6E4DD] bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05A3E] focus-visible:ring-2 focus-visible:ring-[#F05A3E]/25";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
 const labelClass = "block text-xs font-semibold text-[#526066] mb-1.5";
 
 export function ProfilePage() {
@@ -62,9 +62,9 @@ export function ProfilePage() {
         {savedNotice && (
           <div
             role="status"
-            className="inline-flex items-center gap-2 rounded-xl bg-[#182226] px-4 py-2.5 text-xs font-semibold text-white shadow-sm"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#182226] shadow-sm"
           >
-            <Check size={15} className="text-emerald-400" />
+            <Check size={15} className="text-emerald-600" />
             {savedNotice}
           </div>
         )}
@@ -72,25 +72,25 @@ export function ProfilePage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <aside className="lg:col-span-4 space-y-4">
-          <div className="rounded-2xl border border-[#E6E4DD] bg-white p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#182226]">
             <div className="flex items-center gap-3.5">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F05A3E]/15 text-lg font-extrabold text-[#F05A3E]">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F05B45]/15 text-lg font-extrabold text-[#F05B45]">
                 {profile.fullName.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
                 <p className="truncate font-bold text-[#182226]">{profile.fullName}</p>
-                <p className="truncate text-xs text-[#647075]">{profile.email}</p>
+                <p className="truncate text-xs text-[#526066]">{profile.email}</p>
               </div>
             </div>
-            <div className="mt-4 flex items-center justify-between border-t border-[#EEECE6] pt-3.5 text-xs">
-              <span className="text-[#647075]">Bảo mật 2FA</span>
+            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3.5 text-xs">
+              <span className="text-[#526066]">Bảo mật 2FA</span>
               <StatusBadge tone={profile.twoFactorEnabled ? "success" : "warning"}>
                 {profile.twoFactorEnabled ? "Đang bật" : "Chưa bật"}
               </StatusBadge>
             </div>
           </div>
 
-          <nav aria-label="Danh mục hồ sơ" className="rounded-2xl border border-[#E6E4DD] bg-white p-2 space-y-1">
+          <nav aria-label="Danh mục hồ sơ" className="rounded-2xl border border-white/15 bg-[#22B56B] p-2 space-y-1">
             {[
               { id: "info" as const, label: "Thông tin cá nhân", icon: User },
               { id: "vat" as const, label: "Xuất hóa đơn VAT", icon: ReceiptText },
@@ -105,8 +105,8 @@ export function ProfilePage() {
                   onClick={() => setTab(item.id)}
                   className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition-colors cursor-pointer ${
                     active
-                      ? "bg-[#F05A3E] text-white"
-                      : "text-[#334146] hover:bg-[#F3ECE2]/60"
+                      ? "bg-white text-[#166534] shadow-sm"
+                      : "text-white/90 hover:bg-white/15 hover:text-white"
                   }`}
                 >
                   <Icon size={16} />
@@ -117,7 +117,7 @@ export function ProfilePage() {
           </nav>
         </aside>
 
-        <section className="lg:col-span-8 rounded-2xl border border-[#E6E4DD] bg-white p-6 sm:p-8">
+        <section className="lg:col-span-8 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 text-[#182226]">
           {tab === "info" && (
             <form onSubmit={handleSaveProfile} className="space-y-5">
               <h2 className="text-lg font-extrabold text-[#182226]">Thông tin cá nhân</h2>
@@ -222,7 +222,7 @@ export function ProfilePage() {
             <form onSubmit={handleSaveProfile} className="space-y-5">
               <div>
                 <h2 className="text-lg font-extrabold text-[#182226]">Thông tin xuất hóa đơn VAT</h2>
-                <p className="mt-1 text-xs text-[#647075]">
+                <p className="mt-1 text-xs text-[#526066]">
                   Dùng cho đơn hàng doanh nghiệp khi thanh toán vé sự kiện.
                 </p>
               </div>
@@ -273,13 +273,13 @@ export function ProfilePage() {
 
           {tab === "security" && (
             <div className="space-y-8">
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E4DD] bg-[#F9F8F4] p-5">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 font-bold text-[#182226]">
-                    <ShieldCheck size={18} className="text-[#F05A3E]" />
+                    <ShieldCheck size={18} className="text-[#F05B45]" />
                     <span>Xác thực hai lớp (2FA)</span>
                   </div>
-                  <p className="text-xs text-[#647075]">
+                  <p className="text-xs text-[#526066]">
                     Bảo vệ tài khoản bằng mã OTP khi đăng nhập từ thiết bị lạ.
                   </p>
                 </div>
@@ -294,7 +294,7 @@ export function ProfilePage() {
 
               <form onSubmit={handlePasswordSubmit} className="space-y-4">
                 <div className="flex items-center gap-2 font-bold text-[#182226]">
-                  <Lock size={17} className="text-[#647075]" />
+                  <Lock size={17} className="text-[#526066]" />
                   <span>Đổi mật khẩu</span>
                 </div>
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

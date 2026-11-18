@@ -37,20 +37,20 @@ export function AdminUsersPage() {
       title="Quản trị tài khoản"
       subtitle="Phân quyền vai trò (Customer, Staff, Organizer, Admin) và khóa/mở khóa tài khoản vi phạm."
     >
-      <div className="mb-5 flex items-center gap-2.5 rounded-2xl border border-[#E6E4DD] bg-white p-4">
-        <Search size={16} className="text-[#647075]" />
+      <div className="mb-5 flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-white p-4">
+        <Search size={16} className="text-[#526066]" />
         <input
           aria-label="Tìm tài khoản theo tên hoặc email"
           placeholder="Tìm theo tên hoặc email người dùng..."
-          className="w-full bg-transparent text-sm text-[#182226] outline-none"
+          className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-[#182226] placeholder:text-[#7A8494] outline-none"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-[#E6E4DD] bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white text-[#182226]">
         <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="border-b border-[#E6E4DD] bg-[#F9F8F4] text-xs font-bold uppercase tracking-wider text-[#647075]">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-[#526066]">
             <tr>
               <th className="px-5 py-3.5">Người dùng</th>
               <th className="px-5 py-3.5">Vai trò</th>
@@ -59,19 +59,19 @@ export function AdminUsersPage() {
               <th className="px-5 py-3.5 text-right">Thao tác</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#EEECE6]">
+          <tbody className="divide-y divide-slate-200 bg-white">
             {filtered.map((user) => (
-              <tr key={user.id} className="hover:bg-[#F9F8F4]/60">
+              <tr key={user.id} className="hover:bg-slate-50">
                 <td className="px-5 py-4">
                   <p className="font-bold text-[#182226]">{user.name}</p>
-                  <p className="text-xs text-[#647075]">{user.email}</p>
+                  <p className="text-xs text-[#526066]">{user.email}</p>
                 </td>
                 <td className="px-5 py-4">
                   <select
                     aria-label={`Vai trò của ${user.name}`}
                     value={user.role}
                     onChange={(e) => handleRoleChange(user.id, e.target.value as UserRole)}
-                    className="rounded-xl border border-[#E6E4DD] bg-[#F9F8F4] px-3 py-1.5 text-xs font-semibold text-[#182226]"
+                    className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#182226]"
                   >
                     {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (
                       <option key={role} value={role}>
@@ -80,7 +80,7 @@ export function AdminUsersPage() {
                     ))}
                   </select>
                 </td>
-                <td className="px-5 py-4 text-xs text-[#647075]">{user.createdAt}</td>
+                <td className="px-5 py-4 text-xs text-[#526066]">{user.createdAt}</td>
                 <td className="px-5 py-4">
                   <StatusBadge tone={user.status === "Active" ? "success" : "danger"}>
                     {user.status === "Active" ? "Hoạt động" : "Đã khóa"}
