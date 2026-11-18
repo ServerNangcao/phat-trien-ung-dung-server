@@ -1,23 +1,30 @@
 # ──────────────────────────────────────────────────────────
 # CD Pipeline — Ticketing Modular Monolith
-# Runs on push to main (after CI passes)
-# Steps: build image → push to GHCR → deploy via SSH
+# Runs when CI workflow completes successfully on main (or manual dispatch)
+# Steps: build & cache image → push to GHCR → deploy via SSH & health check
 # ──────────────────────────────────────────────────────────
 
 name: CD
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
     branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-vps-deploy
+  cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/ticketing-api
 
 jobs:
   deploy:
     name: Build, Push & Deploy
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: read
       packages: write
@@ -29,6 +36,9 @@ jobs:
       - name: Set lowercase image name
         run: |
           echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}/ticketing-api" >> $GITHUB_ENV
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -54,6 +64,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Deploy to VPS via SSH
         if: ${{ secrets.VPS_HOST != '' }}
@@ -64,17 +76,28 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             cd ${{ secrets.VPS_APP_DIR }}
-            
-            # Pull image mới
-            echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Đăng nhập GHCR trên VPS để tải image mới nhất
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+            # Kéo image mới
             docker compose pull ticketing-api
-            
-            # Restart chỉ container API, giữ nguyên DB và Redis
+
+            # Khởi động / tái tạo container API với image mới
             docker compose up -d ticketing-api
-            
-            # Chờ health check
-            sleep 10
-            curl -sf http://localhost:8080/health || exit 1
-            
-            # Dọn image cũ
-            docker image prune -f
+
+            # Kiểm tra trạng thái sức khỏe dịch vụ (tối đa 30 giây)
+            echo "Đang kiểm tra Health check tại http://localhost:8080/health..."
+            for i in $(seq 1 15); do
+              if curl -sf http://localhost:8080/health > /dev/null; then
+                echo "Deploy thành công! Health check OK."
+                docker image prune -f
+                exit 0
+              fi
+              echo "Đang chờ API sẵn sàng ($i/15)..."
+              sleep 2
+            done
+
+            echo "LỖI: Health check thất bại sau khi khởi động!"
+            docker compose logs --tail=50 ticketing-api
+            exit 1
