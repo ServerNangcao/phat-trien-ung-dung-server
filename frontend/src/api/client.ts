@@ -22,7 +22,7 @@ apiClient.interceptors.response.use(
     }
 
     const request = error.config;
-    if (request.url?.includes("/auth/refresh") || request.headers["x-refresh-retried"]) {
+    if (request.url?.includes("/identity/refresh") || request.url?.includes("/auth/refresh") || request.headers["x-refresh-retried"]) {
       localStorage.removeItem("ticketing.accessToken");
       localStorage.removeItem("ticketing.refreshToken");
       window.dispatchEvent(new Event("ticketing:session-expired"));
@@ -30,7 +30,7 @@ apiClient.interceptors.response.use(
     }
 
     refreshRequest ??= apiClient
-      .post<{ accessToken: string; refreshToken?: string }>("/api/auth/refresh", {
+      .post<{ accessToken: string; refreshToken?: string }>("/api/identity/refresh", {
         refreshToken: localStorage.getItem("ticketing.refreshToken"),
       })
       .then(({ data }) => {
