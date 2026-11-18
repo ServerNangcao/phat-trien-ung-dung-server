@@ -21,7 +21,13 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000")
+        policy.WithOrigins(
+                  "http://localhost:5173",
+                  "http://127.0.0.1:5173",
+                  "http://localhost:3000",
+                  "https://sukienbanve.id.vn",
+                  "https://api.sukienbanve.id.vn")
+              .SetIsOriginAllowedToAllowWildcardSubdomains()
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();

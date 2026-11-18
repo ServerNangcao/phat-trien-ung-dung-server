@@ -56,7 +56,7 @@ services:
     image: ${TICKETING_API_IMAGE:-ghcr.io/${GITHUB_REPOSITORY:-owner/ticketing}/ticketing-api:latest}
     restart: always
     ports:
-      - "127.0.0.1:8080:8080"
+      - "8080:8080"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
