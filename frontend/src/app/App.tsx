@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, CalendarDays, Check,
+  ArrowDown, ArrowLeft, ArrowRight, ArrowUpRight, BadgeCheck, Briefcase, CalendarDays, Check,
   ChevronDown, ChevronLeft, ChevronRight, Clock3, Compass, CreditCard, Headphones,
   Heart, LockKeyhole, MapPin, Menu, Minus, Music2, Plus, QrCode, Search, ShieldCheck,
   Sparkles, Ticket, TicketCheck, UserRound, X,
@@ -47,7 +47,13 @@ function useSession() {
   }, []);
   const login = async (role: UserRole, email: string, password: string) => {
     if (isDemoMode) {
-      const demoUser = { name: role === "staff" ? "Minh Anh · Soát vé" : "Linh Nguyễn", role };
+      const demoNames: Record<UserRole, string> = {
+        customer: "Linh Nguyễn",
+        staff: "Minh Anh · Soát vé",
+        organizer: "Bảo Long · Ban tổ chức",
+        admin: "Thu Hà · Quản trị viên",
+      };
+      const demoUser = { name: demoNames[role], role };
       localStorage.setItem("ticketing.user", JSON.stringify(demoUser));
       setUser(demoUser);
       return;
@@ -98,14 +104,14 @@ function App() {
           <Route path="/checkout/:id" element={<CheckoutPage />} />
           <Route path="/payment/return" element={<PaymentReturn />} />
           <Route path="/my-tickets" element={<MyTicketsPage />} />
-          <Route path="/profile" element={<ProfilePage />} />
-          <Route path="/organizer/analytics" element={<OrganizerAnalyticsPage />} />
-          <Route path="/organizer/builder" element={<OrganizerBuilderPage />} />
-          <Route path="/organizer/inventory" element={<OrganizerInventoryPage />} />
-          <Route path="/organizer/orders" element={<OrganizerOrdersPage />} />
-          <Route path="/admin/moderation" element={<AdminModerationPage />} />
-          <Route path="/admin/refunds" element={<AdminRefundsPage />} />
-          <Route path="/admin/users" element={<AdminUsersPage />} />
+          <Route path="/profile" element={<RequireAuth user={session.user}><ProfilePage /></RequireAuth>} />
+          <Route path="/organizer/analytics" element={<RequireRole role="organizer" user={session.user}><OrganizerAnalyticsPage /></RequireRole>} />
+          <Route path="/organizer/builder" element={<RequireRole role="organizer" user={session.user}><OrganizerBuilderPage /></RequireRole>} />
+          <Route path="/organizer/inventory" element={<RequireRole role="organizer" user={session.user}><OrganizerInventoryPage /></RequireRole>} />
+          <Route path="/organizer/orders" element={<RequireRole role="organizer" user={session.user}><OrganizerOrdersPage /></RequireRole>} />
+          <Route path="/admin/moderation" element={<RequireRole role="admin" user={session.user}><AdminModerationPage /></RequireRole>} />
+          <Route path="/admin/refunds" element={<RequireRole role="admin" user={session.user}><AdminRefundsPage /></RequireRole>} />
+          <Route path="/admin/users" element={<RequireRole role="admin" user={session.user}><AdminUsersPage /></RequireRole>} />
           <Route path="/login" element={<LoginPage login={session.login} register={session.register} />} />
         </Route>
         <Route path="/staff/check-in" element={
@@ -119,6 +125,9 @@ function App() {
 
 function SiteLayout({ user, logout }: { user: UserSession | null; logout: () => void }) {
   const [mobileMenu, setMobileMenu] = useState(false);
+  const isOrganizer = user?.role === "organizer";
+  const isAdmin = user?.role === "admin";
+  const isStaff = user?.role === "staff";
   return (
     <>
       <header className="site-header">
@@ -127,25 +136,28 @@ function SiteLayout({ user, logout }: { user: UserSession | null; logout: () => 
           <nav className="hidden items-center gap-7 text-[14px] font-semibold text-slate-600 md:flex">
             <a href="/#events" className="hover:text-coral">Khám phá</a>
             <a href="/#categories" className="hover:text-coral">Danh mục</a>
-            <Link to="/organizer/analytics" className="hover:text-coral">Ban tổ chức</Link>
-            <Link to="/admin/moderation" className="hover:text-coral">Quản trị</Link>
+            {isOrganizer && <Link to="/organizer/analytics" className="hover:text-coral">Ban tổ chức</Link>}
+            {isAdmin && <Link to="/admin/moderation" className="hover:text-coral">Quản trị</Link>}
+            {isStaff && <Link to="/staff/check-in" className="hover:text-coral">Soát vé</Link>}
           </nav>
           <div className="hidden items-center gap-3 md:flex">
             <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi"><TicketCheck size={19} /><span>Vé của tôi</span></Link>
-            <Link to="/profile" className="btn-outline !px-3.5 !py-2">Hồ sơ</Link>
+            {user && <Link to="/profile" className="btn-outline !px-3.5 !py-2">Hồ sơ</Link>}
             {user ? <div className="flex items-center gap-3"><span className="text-sm font-semibold">{user.name.split(" · ")[0]}</span><button className="btn-quiet" onClick={logout}>Đăng xuất</button></div>
               : <Link to="/login" className="btn-outline">Đăng nhập</Link>}
-            <Link to="/organizer/builder" className="btn-primary !px-5 !py-2.5">Tổ chức sự kiện</Link>
+            {isOrganizer && <Link to="/organizer/builder" className="btn-primary !px-5 !py-2.5">Tổ chức sự kiện</Link>}
           </div>
           <button className="icon-button md:hidden" onClick={() => setMobileMenu(!mobileMenu)} aria-label="Mở menu">{mobileMenu ? <X /> : <Menu />}</button>
         </div>
         {mobileMenu && <div className="mobile-menu">
           <Link to="/" onClick={() => setMobileMenu(false)}>Khám phá</Link>
           <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>Vé của tôi</Link>
-          <Link to="/profile" onClick={() => setMobileMenu(false)}>Hồ sơ</Link>
-          <Link to="/organizer/analytics" onClick={() => setMobileMenu(false)}>Ban tổ chức</Link>
-          <Link to="/admin/moderation" onClick={() => setMobileMenu(false)}>Quản trị</Link>
-          <Link to="/login" onClick={() => setMobileMenu(false)}>Đăng nhập</Link>
+          {user && <Link to="/profile" onClick={() => setMobileMenu(false)}>Hồ sơ</Link>}
+          {isOrganizer && <Link to="/organizer/analytics" onClick={() => setMobileMenu(false)}>Ban tổ chức</Link>}
+          {isAdmin && <Link to="/admin/moderation" onClick={() => setMobileMenu(false)}>Quản trị</Link>}
+          {isStaff && <Link to="/staff/check-in" onClick={() => setMobileMenu(false)}>Soát vé</Link>}
+          {user ? <button className="text-left py-3 font-semibold text-coral" onClick={() => { logout(); setMobileMenu(false); }}>Đăng xuất</button>
+            : <Link to="/login" onClick={() => setMobileMenu(false)}>Đăng nhập</Link>}
         </div>}
       </header>
       <main><OutletContextSpacer /></main>
@@ -450,7 +462,13 @@ function LoginPage({ login, register }: {
         navigate("/my-tickets");
       } else {
         await login(role, email, password);
-        navigate(role === "staff" ? "/staff/check-in" : "/my-tickets");
+        const destinations: Record<UserRole, string> = {
+          customer: "/my-tickets",
+          staff: "/staff/check-in",
+          organizer: "/organizer/analytics",
+          admin: "/admin/moderation",
+        };
+        navigate(destinations[role]);
       }
     }
     catch (exception) { setError((exception as Error).message || (mode === "login" ? "Không thể đăng nhập." : "Không thể tạo tài khoản.")); }
@@ -464,7 +482,12 @@ function LoginPage({ login, register }: {
     <div className="auth-tabs" role="tablist" aria-label="Tài khoản"><button type="button" role="tab" aria-selected={mode === "login"} className={mode === "login" ? "active" : ""} onClick={() => changeMode("login")}>Đăng nhập</button><button type="button" role="tab" aria-selected={mode === "register"} className={mode === "register" ? "active" : ""} onClick={() => changeMode("register")}>Đăng ký</button></div>
     <h2>{mode === "login" ? <>Đăng nhập<br />vào Ticketing.</> : <>Tạo tài khoản<br />Ticketing của bạn.</>}</h2>
     <p>{mode === "login" ? "Chọn vai trò để tiếp tục tới không gian phù hợp." : "Đăng ký tài khoản khách hàng để lưu và quản lý vé."}</p>
-    {mode === "login" && <div className="role-selector"><button type="button" onClick={() => setRole("customer")} className={role === "customer" ? "selected" : ""}><UserRound size={18} /><span><b>Khách hàng</b><small>Quản lý vé đã mua</small></span><span className="radio-mark">{role === "customer" && <Check size={12} />}</span></button><button type="button" onClick={() => setRole("staff")} className={role === "staff" ? "selected" : ""}><QrCode size={18} /><span><b>Nhân viên check-in</b><small>Quét vé tại sự kiện</small></span><span className="radio-mark">{role === "staff" && <Check size={12} />}</span></button></div>}
+    {mode === "login" && <div className="role-selector sm:grid-cols-2">
+      <button type="button" onClick={() => setRole("customer")} className={role === "customer" ? "selected" : ""}><UserRound size={18} /><span><b>Khách hàng</b><small>Quản lý vé đã mua</small></span><span className="radio-mark">{role === "customer" && <Check size={12} />}</span></button>
+      <button type="button" onClick={() => setRole("staff")} className={role === "staff" ? "selected" : ""}><QrCode size={18} /><span><b>Nhân viên check-in</b><small>Quét vé tại sự kiện</small></span><span className="radio-mark">{role === "staff" && <Check size={12} />}</span></button>
+      <button type="button" onClick={() => setRole("organizer")} className={role === "organizer" ? "selected" : ""}><Briefcase size={18} /><span><b>Ban tổ chức</b><small>Tạo &amp; quản lý sự kiện</small></span><span className="radio-mark">{role === "organizer" && <Check size={12} />}</span></button>
+      <button type="button" onClick={() => setRole("admin")} className={role === "admin" ? "selected" : ""}><ShieldCheck size={18} /><span><b>Quản trị viên</b><small>Kiểm duyệt &amp; hoàn tiền</small></span><span className="radio-mark">{role === "admin" && <Check size={12} />}</span></button>
+    </div>}
     <div className="login-credentials">
       {mode === "register" && <label className="form-field"><span>Họ và tên</span><input autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Ví dụ: Nguyễn Minh Anh" /></label>}
       <label className="form-field"><span>Email</span><input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="ban@email.com" /></label>
@@ -476,6 +499,11 @@ function LoginPage({ login, register }: {
     {isDemoMode && mode === "login" && <p className="login-demo-note">Chế độ demo · đăng nhập thử không cần mật khẩu</p>}
     <Link className="login-back" to="/">← Quay lại khám phá</Link>
   </form></div>;
+}
+
+function RequireAuth({ user, children }: { user: UserSession | null; children: React.ReactNode }) {
+  if (!user) return <Navigate to="/login" replace />;
+  return children;
 }
 
 function RequireRole({ role, user, children }: { role: UserRole; user: UserSession | null; children: React.ReactNode }) {
