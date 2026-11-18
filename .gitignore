@@ -31,7 +31,17 @@ frontend/test-results/
 ## Media & Screenshots
 screenshots/
 
+## Mimosa
+.mimosa/
+
+
 ## Markdown docs (except README.md)
 *.md
 docs/**/*.md
 !README.md
+
+## Admin UI Playwright
+admin-ui/e2e/.seed.json
+admin-ui/test-results/
+admin-ui/playwright-report/
+.env.vnpay
