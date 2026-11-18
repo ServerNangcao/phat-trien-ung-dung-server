@@ -47,9 +47,14 @@ var app = builder.Build();
 app.UseSecurityHeaders();
 app.UseCors();
 
-if (app.Environment.IsDevelopment())
+var shouldApplyMigrations = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("ApplyMigrationsOnStartup");
+if (shouldApplyMigrations)
 {
     await app.Services.ApplyDatabaseMigrationsAsync();
+}
+
+if (app.Environment.IsDevelopment())
+{
     await Ticketing.Api.DataSeeder.SeedAsync(app.Services);
     app.MapOpenApi();
 }

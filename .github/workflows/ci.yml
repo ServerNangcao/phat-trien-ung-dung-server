@@ -1,7 +1,7 @@
 # ──────────────────────────────────────────────────────────
 # CI Pipeline — Ticketing Modular Monolith
 # Runs on every push and PR to main/develop
-# Steps: restore → build → arch tests → docker build
+# Steps: restore → build → all tests → docker build & health → frontend & E2E
 # ──────────────────────────────────────────────────────────
 
 name: CI
@@ -12,6 +12,10 @@ on:
   pull_request:
     branches: [main, develop]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   DOTNET_VERSION: '10.0.x'
   DOTNET_NOLOGO: true
@@ -19,7 +23,7 @@ env:
 
 jobs:
   build-and-test:
-    name: Build, Test & Architecture Check
+    name: Build & All Tests (Arch + Integration)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -43,10 +47,38 @@ jobs:
       - name: Run Architecture Tests
         run: dotnet test tests/Architecture.Tests/Architecture.Tests.csproj --no-build -c Release --verbosity normal
 
+      - name: Run Integration Tests
+        run: dotnet test tests/Integration.Tests/Integration.Tests.csproj --no-build -c Release --verbosity normal
+
   docker-build:
-    name: Docker Build Check
+    name: Docker Build & Startup Check
     runs-on: ubuntu-latest
     needs: build-and-test
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: ticketing
+          POSTGRES_USER: ticketing_app
+          POSTGRES_PASSWORD: password123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -55,17 +87,38 @@ jobs:
       - name: Build Docker image
         run: docker build -f backend/Dockerfile -t ticketing-api:ci .
 
-      # Kiểm tra csproj trong Dockerfile — nếu thêm project mới mà quên thêm COPY thì fail ở đây
-      - name: Verify container starts
+      - name: Verify container startup & health check
         run: |
           docker run -d --name ci-test \
+            --network host \
             -e ASPNETCORE_ENVIRONMENT=Development \
             -e ASPNETCORE_URLS=http://+:8080 \
+            -e ConnectionStrings__DefaultConnection="Host=localhost;Port=5432;Database=ticketing;Username=ticketing_app;Password=password123" \
+            -e ConnectionStrings__Redis="localhost:6379" \
+            -e ConnectionStrings__Hangfire="Host=localhost;Port=5432;Database=ticketing;Username=ticketing_app;Password=password123" \
+            -e Jwt__Secret="SuperSecretKeyAtLeast32Characters!!" \
+            -e Jwt__Issuer="ticketing-api" \
+            -e Jwt__Audience="ticketing-client" \
+            -e S3__ServiceUrl="http://localhost:9000" \
+            -e S3__AccessKey="test" \
+            -e S3__SecretKey="test" \
+            -e S3__BucketName="ticketing" \
             ticketing-api:ci
-          sleep 5
+
+          echo "Waiting for container to initialize and pass health check..."
+          for i in {1..30}; do
+            if curl -sf http://localhost:8080/health > /dev/null; then
+              echo "Container is healthy and started successfully!"
+              docker stop ci-test && docker rm ci-test
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "ERROR: Container health check failed!"
           docker logs ci-test
-          docker stop ci-test
-          docker rm ci-test
+          docker stop ci-test && docker rm ci-test
+          exit 1
 
   frontend:
     name: Frontend Build & E2E
@@ -91,8 +144,23 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/package-lock.json') }}
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
       - name: Run end-to-end tests
         run: npm run test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
