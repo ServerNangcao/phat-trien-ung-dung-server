@@ -130,27 +130,69 @@ export const ticketingApi = {
     const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     const url = isGuid ? `/api/events/${id}` : `/api/events/slug/${id}`;
     try {
-      const { data } = await apiClient.get<unknown>(url);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await apiClient.get<any>(url);
+      if (data?.id) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: ticketTypes } = await apiClient.get<any[]>(`/api/events/${data.id}/ticket-types`);
+          if (Array.isArray(ticketTypes) && ticketTypes.length > 0) {
+            data.tiers = ticketTypes.map((t) => ({
+              id: t.id,
+              name: t.name,
+              price: t.price,
+              remaining: t.quantityAvailable ?? t.capacity ?? 100,
+              description: `${t.name} (Tối đa ${t.maxPerOrder ?? 4} vé/đơn)`,
+            }));
+          }
+        } catch {
+          // Fallback if ticket-types call fails
+        }
+      }
       return normalizeEvent(data);
     } catch (error) {
       console.warn(`[TicketingApi] Không tìm thấy sự kiện "${id}" trên Backend, dùng dữ liệu Demo:`, error);
       return demoApi.event(id);
     }
   },
-  reserve: async (eventId: string, tierId: string, quantity: number) => {
+  reserve: async (eventId: string, tierId: string, quantity: number): Promise<Reservation> => {
     if (isDemoMode) return demoApi.reserve(eventId, tierId, quantity);
-    const { data } = await apiClient.post<Reservation>("/api/ticketing/reservations", { eventId, ticketTypeId: tierId, quantity });
-    return data;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await apiClient.post<any>("/api/ticketing/reservations", { eventId, ticketTypeId: tierId, quantity });
+    const expiresAtMs = typeof data.expiresAt === "number"
+      ? data.expiresAt
+      : new Date(data.expiresAt).getTime();
+    return {
+      id: data.id,
+      eventId: data.eventId,
+      tierId: data.tierId || data.ticketTypeId,
+      quantity: data.quantity,
+      expiresAt: expiresAtMs,
+    };
   },
   checkout: async (input: CheckoutInput) => {
     if (isDemoMode) return demoApi.checkout(input);
     const { data } = await apiClient.post<{ paymentUrl: string }>("/api/orders", input);
     return data;
   },
-  tickets: async () => {
+  tickets: async (): Promise<PurchasedTicket[]> => {
     if (isDemoMode) return demoApi.tickets();
-    const { data } = await apiClient.get<PurchasedTicket[]>("/api/tickets/mine");
-    return data;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await apiClient.get<any[]>("/api/tickets/mine");
+    const rawList = Array.isArray(data) ? data : [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return rawList.map((t: any) => ({
+      id: t.id,
+      eventId: t.eventId,
+      eventTitle: t.eventTitle || "Vé tham gia sự kiện",
+      image: t.image || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80",
+      venue: t.venue || "TP. Hồ Chí Minh",
+      date: t.date || new Date(t.createdAt || Date.now()).toISOString().slice(0, 10),
+      tierName: t.ticketTypeName || t.tierName || "Vé tiêu chuẩn",
+      holderName: t.holderName || t.customerEmail || "Khách Hàng",
+      code: t.code || t.qrSignature || t.qrPayload || t.ticketCode || t.id,
+      status: ((t.status || "valid").toLowerCase() === "used" ? "used" : (t.status || "valid").toLowerCase() === "cancelled" ? "cancelled" : "valid") as "valid" | "used" | "cancelled",
+    }));
   },
   checkIn: async (code: string) => {
     if (isDemoMode) return demoApi.checkIn(code);

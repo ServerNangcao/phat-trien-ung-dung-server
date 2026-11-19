@@ -36,6 +36,9 @@ public static class ModuleExtensions
                     // Bảng migration history riêng trong schema của module (điểm 8)
                     npgsqlOptions.MigrationsHistoryTable("__EFMigrationsHistory", schema);
                 });
+
+            options.ConfigureWarnings(w =>
+                w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
         });
 
         // Đăng ký marker để OutboxWorker tìm được tất cả DbContext

@@ -102,6 +102,24 @@ public static class DataSeeder
             }
         }
 
+        // 4. Staff
+        const string staffEmail = "staff@ticketing.local";
+        var staff = await userManager.FindByEmailAsync(staffEmail);
+        if (staff is null)
+        {
+            logger.LogInformation("[DataSeeder] Tạo tài khoản Staff: {Email}", staffEmail);
+            staff = ApplicationUser.Create(staffEmail, "Nhân Viên Soát Vé", "0901112233");
+            var result = await userManager.CreateAsync(staff, "Staff@123");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(staff, "Staff");
+            }
+            else
+            {
+                logger.LogWarning("[DataSeeder] Không tạo được Staff: {Errors}", string.Join(", ", result.Errors.Select(e => e.Description)));
+            }
+        }
+
         return organizer!.Id;
     }
 

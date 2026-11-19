@@ -48,7 +48,11 @@ internal sealed class TicketTypeConfiguration : IEntityTypeConfiguration<TicketT
             .HasDefaultValue(true);
 
         // xmin concurrency token (PostgreSQL optimistic concurrency)
-        builder.Property<uint>("xmin").HasColumnType("xid").ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
+        builder.Property<uint>("xmin")
+            .HasColumnType("xid")
+            .HasDefaultValue(0u)
+            .ValueGeneratedOnAddOrUpdate()
+            .IsConcurrencyToken();
 
         builder.HasIndex(x => x.EventId);
     }
