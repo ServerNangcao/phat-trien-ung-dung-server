@@ -1,6 +1,8 @@
 import { apiClient, isDemoMode } from "./client";
 import { demoApi } from "./demo";
+import { platformDemoApi } from "./platformDemo";
 import type {
+  AdminUserItem,
   AuthResponse,
   CheckInStatus,
   CheckoutInput,
@@ -11,6 +13,7 @@ import type {
   Reservation,
   TicketTier,
   UserProfileResponse,
+  UserRole,
 } from "./types";
 
 const DEFAULT_IMAGES = [
@@ -205,5 +208,61 @@ export const ticketingApi = {
     if (isDemoMode) return demoApi.checkInCount();
     const { data } = await apiClient.get<{ count: number }>("/api/check-in/count");
     return data.count;
+  },
+  getAdminUsers: async (): Promise<AdminUserItem[]> => {
+    if (isDemoMode) return platformDemoApi.getUsers();
+    try {
+      const { data } = await apiClient.get<
+        Array<{
+          id: string;
+          email: string;
+          fullName: string;
+          phoneNumber?: string | null;
+          isActive: boolean;
+          createdAt: string;
+          roles: string[];
+        }>
+      >("/api/identity/users");
+
+      return data.map((u) => {
+        const rolesLower = (u.roles || []).map((r) => r.toLowerCase());
+        let role: UserRole = "customer";
+        if (rolesLower.includes("admin")) role = "admin";
+        else if (rolesLower.includes("organizer")) role = "organizer";
+        else if (rolesLower.includes("staff")) role = "staff";
+
+        const d = new Date(u.createdAt);
+        const formattedDate = !isNaN(d.getTime())
+          ? d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })
+          : u.createdAt;
+
+        return {
+          id: u.id,
+          name: u.fullName || u.email,
+          email: u.email,
+          role,
+          status: u.isActive ? "Active" : "Locked",
+          createdAt: formattedDate,
+        };
+      });
+    } catch (error) {
+      console.warn("[TicketingApi] Không thể lấy danh sách người dùng từ Backend, dùng fallback Demo:", error);
+      return platformDemoApi.getUsers();
+    }
+  },
+  updateUserRole: async (userId: string, role: UserRole): Promise<void> => {
+    if (isDemoMode) {
+      platformDemoApi.updateUserRole(userId, role);
+      return;
+    }
+    const capitalizedRole = role.charAt(0).toUpperCase() + role.slice(1);
+    await apiClient.put(`/api/identity/users/${userId}/role`, { role: capitalizedRole });
+  },
+  updateUserStatus: async (userId: string, isActive: boolean): Promise<void> => {
+    if (isDemoMode) {
+      platformDemoApi.toggleUserStatus(userId);
+      return;
+    }
+    await apiClient.put(`/api/identity/users/${userId}/status`, { isActive });
   },
 };
