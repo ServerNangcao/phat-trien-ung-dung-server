@@ -7,16 +7,19 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
 using Ticketing.Infrastructure.Core;
 using Ticketing.SharedKernel;
 
 namespace Identity.Internal.Api;
 
 /// <summary>
-/// 6 Minimal API endpoints cho module Identity.
+/// 9 Minimal API endpoints cho module Identity.
 /// </summary>
 internal static class IdentityEndpoints
 {
+    private static readonly string[] ValidRoles = ["Customer", "Staff", "Organizer", "Admin"];
+
     public static IEndpointRouteBuilder MapIdentityEndpointsInternal(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/identity")
@@ -31,6 +34,11 @@ internal static class IdentityEndpoints
         group.MapGet("/me", GetProfileAsync).RequireAuthorization();
         group.MapPut("/me", UpdateProfileAsync).RequireAuthorization();
         group.MapPost("/change-password", ChangePasswordAsync).RequireAuthorization();
+
+        // ── Admin endpoints (yêu cầu JWT + Role Admin) ──
+        group.MapGet("/users", GetUsersAsync).RequireAuthorization(policy => policy.RequireRole("Admin"));
+        group.MapPut("/users/{id:guid}/role", UpdateUserRoleAsync).RequireAuthorization(policy => policy.RequireRole("Admin"));
+        group.MapPut("/users/{id:guid}/status", UpdateUserStatusAsync).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         return app;
     }
@@ -245,6 +253,119 @@ internal static class IdentityEndpoints
         await jwtTokenService.RevokeAllRefreshTokensAsync(user.Id);
 
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// GET /api/identity/users — Lấy danh sách tất cả người dùng (chỉ Admin).
+    /// </summary>
+    private static async Task<IResult> GetUsersAsync(
+        UserManager<ApplicationUser> userManager)
+    {
+        var users = await userManager.Users
+            .OrderByDescending(u => u.CreatedAt)
+            .ToListAsync();
+
+        var result = new List<AdminUserResponse>(users.Count);
+        foreach (var user in users)
+        {
+            var roles = await userManager.GetRolesAsync(user);
+            result.Add(new AdminUserResponse(
+                Id: user.Id,
+                Email: user.Email!,
+                FullName: user.FullName,
+                PhoneNumber: user.PhoneNumber,
+                IsActive: user.IsActive,
+                CreatedAt: user.CreatedAt,
+                Roles: roles.ToList().AsReadOnly()));
+        }
+
+        return Results.Ok(result);
+    }
+
+    /// <summary>
+    /// PUT /api/identity/users/{id}/role — Đổi vai trò người dùng (chỉ Admin).
+    /// </summary>
+    private static async Task<IResult> UpdateUserRoleAsync(
+        Guid id,
+        UpdateUserRoleRequest request,
+        UserManager<ApplicationUser> userManager)
+    {
+        // 1. Chuẩn hóa và validate tên role
+        var normalized = ValidRoles
+            .FirstOrDefault(r => r.Equals(request.Role, StringComparison.OrdinalIgnoreCase));
+
+        if (normalized is null)
+        {
+            return Result.Validation($"Vai trò '{request.Role}' không hợp lệ. Cho phép: {string.Join(", ", ValidRoles)}.").ToHttpResult();
+        }
+
+        // 2. Tìm user
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null)
+        {
+            return Result.NotFound("Không tìm thấy người dùng.").ToHttpResult();
+        }
+
+        // 3. Xóa toàn bộ role cũ, gán role mới
+        var currentRoles = await userManager.GetRolesAsync(user);
+        if (currentRoles.Count > 0)
+        {
+            await userManager.RemoveFromRolesAsync(user, currentRoles);
+        }
+
+        var addResult = await userManager.AddToRoleAsync(user, normalized);
+        if (!addResult.Succeeded)
+        {
+            var error = string.Join("; ", addResult.Errors.Select(e => e.Description));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        // 4. Trả về thông tin mới
+        var roles = await userManager.GetRolesAsync(user);
+        return Results.Ok(new AdminUserResponse(
+            Id: user.Id,
+            Email: user.Email!,
+            FullName: user.FullName,
+            PhoneNumber: user.PhoneNumber,
+            IsActive: user.IsActive,
+            CreatedAt: user.CreatedAt,
+            Roles: roles.ToList().AsReadOnly()));
+    }
+
+    /// <summary>
+    /// PUT /api/identity/users/{id}/status — Khóa hoặc mở khóa tài khoản (chỉ Admin).
+    /// </summary>
+    private static async Task<IResult> UpdateUserStatusAsync(
+        Guid id,
+        UpdateUserStatusRequest request,
+        UserManager<ApplicationUser> userManager)
+    {
+        // 1. Tìm user
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null)
+        {
+            return Result.NotFound("Không tìm thấy người dùng.").ToHttpResult();
+        }
+
+        // 2. Cập nhật trạng thái
+        user.SetActive(request.IsActive);
+        var updateResult = await userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            var error = string.Join("; ", updateResult.Errors.Select(e => e.Description));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        // 3. Trả về thông tin mới
+        var roles = await userManager.GetRolesAsync(user);
+        return Results.Ok(new AdminUserResponse(
+            Id: user.Id,
+            Email: user.Email!,
+            FullName: user.FullName,
+            PhoneNumber: user.PhoneNumber,
+            IsActive: user.IsActive,
+            CreatedAt: user.CreatedAt,
+            Roles: roles.ToList().AsReadOnly()));
     }
 
     /// <summary>
