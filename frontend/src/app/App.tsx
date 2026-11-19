@@ -98,7 +98,14 @@ function App() {
             />
             <Route
               path="/login"
-              element={<LoginPage login={session.login} register={session.register} />}
+              element={
+                <LoginPage
+                  login={session.login}
+                  register={session.register}
+                  forgotPassword={session.forgotPassword}
+                  resetPassword={session.resetPassword}
+                />
+              }
             />
           </Route>
           <Route

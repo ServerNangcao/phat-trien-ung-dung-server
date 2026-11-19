@@ -1,13 +1,15 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { ArrowRight, Briefcase, Check, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowRight, Briefcase, Check, KeyRound, Mail, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { isDemoMode } from "../../../api/client";
-import type { UserSession } from "../../../api/types";
+import type { ForgotPasswordResponse, ResetPasswordResponse, UserSession } from "../../../api/types";
 
 interface LoginPageProps {
   login: (role: UserSession["role"], email: string, password: string) => Promise<UserSession>;
   register: (name: string, email: string, password: string) => Promise<void>;
+  forgotPassword?: (email: string) => Promise<ForgotPasswordResponse>;
+  resetPassword?: (email: string, token: string, newPassword: string) => Promise<ResetPasswordResponse>;
 }
 
 function extractErrorMessage(exception: unknown, fallback: string): string {
@@ -38,17 +40,20 @@ function extractErrorMessage(exception: unknown, fallback: string): string {
   return (exception as Error)?.message || fallback;
 }
 
-export function LoginPage({ login, register }: LoginPageProps) {
+export function LoginPage({ login, register, forgotPassword, resetPassword }: LoginPageProps) {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register" | "forgot" | "reset">("login");
   const [role, setRole] = useState<UserSession["role"]>("customer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
+  const [demoOtp, setDemoOtp] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [token, setToken] = useState("");
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -76,6 +81,33 @@ export function LoginPage({ login, register }: LoginPageProps) {
         setLoading(false);
         return;
       }
+    } else if (mode === "forgot") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        setError("Vui lòng nhập địa chỉ email hợp lệ.");
+        setLoading(false);
+        return;
+      }
+    } else if (mode === "reset") {
+      if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        setError("Vui lòng nhập địa chỉ email hợp lệ.");
+        setLoading(false);
+        return;
+      }
+      if (!token.trim()) {
+        setError("Vui lòng nhập mã xác thực (OTP / Token).");
+        setLoading(false);
+        return;
+      }
+      if (password.length < 8) {
+        setError("Mật khẩu mới cần có ít nhất 8 ký tự.");
+        setLoading(false);
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError("Mật khẩu xác nhận chưa khớp.");
+        setLoading(false);
+        return;
+      }
     } else if (!isDemoMode && (!email.trim() || !password)) {
       setError("Vui lòng nhập email và mật khẩu.");
       setLoading(false);
@@ -86,6 +118,31 @@ export function LoginPage({ login, register }: LoginPageProps) {
       if (mode === "register") {
         await register(name.trim(), email.trim(), password);
         navigate("/my-tickets");
+      } else if (mode === "forgot") {
+        if (!forgotPassword) {
+          throw new Error("Tính năng quên mật khẩu chưa được cấu hình.");
+        }
+        const res = await forgotPassword(email.trim());
+        setInfoMessage(res.message);
+        if (res.resetToken) {
+          setDemoOtp(res.resetToken);
+          setToken(res.resetToken);
+        }
+        // Chuyển sang màn hình nhập OTP / mật khẩu mới
+        setMode("reset");
+        setPassword("");
+        setConfirmPassword("");
+      } else if (mode === "reset") {
+        if (!resetPassword) {
+          throw new Error("Tính năng đặt lại mật khẩu chưa được cấu hình.");
+        }
+        const res = await resetPassword(email.trim(), token.trim(), password);
+        setInfoMessage(res.message || "Đặt lại mật khẩu thành công. Vui lòng đăng nhập với mật khẩu mới.");
+        setMode("login");
+        setPassword("");
+        setConfirmPassword("");
+        setToken("");
+        setDemoOtp(null);
       } else {
         const session = await login(role, email, password);
         const destinations: Record<UserSession["role"], string> = {
@@ -97,22 +154,32 @@ export function LoginPage({ login, register }: LoginPageProps) {
         navigate(destinations[session.role] ?? "/my-tickets");
       }
     } catch (exception) {
-      setError(
-        extractErrorMessage(
-          exception,
-          mode === "login" ? "Không thể đăng nhập." : "Không thể tạo tài khoản.",
-        ),
-      );
+      const fallbackMsg =
+        mode === "login"
+          ? "Không thể đăng nhập."
+          : mode === "register"
+            ? "Không thể tạo tài khoản."
+            : mode === "forgot"
+              ? "Không thể gửi yêu cầu đặt lại mật khẩu."
+              : "Không thể đặt lại mật khẩu.";
+      setError(extractErrorMessage(exception, fallbackMsg));
     } finally {
       setLoading(false);
     }
   };
 
-  const changeMode = (nextMode: "login" | "register") => {
+  const changeMode = (nextMode: "login" | "register" | "forgot" | "reset") => {
     setMode(nextMode);
     setError("");
+    if (nextMode === "login" || nextMode === "register") {
+      setInfoMessage("");
+      setDemoOtp(null);
+    }
     setPassword("");
     setConfirmPassword("");
+    if (nextMode !== "reset") {
+      setToken("");
+    }
     setRole("customer");
   };
 
@@ -138,27 +205,45 @@ export function LoginPage({ login, register }: LoginPageProps) {
       </div>
 
       <form className="login-form" onSubmit={(event) => void handleSubmit(event)}>
-        <div className="eyebrow muted-eyebrow">CHÀO MỪNG BẠN</div>
-        <div className="auth-tabs" role="tablist" aria-label="Tài khoản">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "login"}
-            className={mode === "login" ? "active" : ""}
-            onClick={() => changeMode("login")}
-          >
-            Đăng nhập
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === "register"}
-            className={mode === "register" ? "active" : ""}
-            onClick={() => changeMode("register")}
-          >
-            Đăng ký
-          </button>
+        <div className="eyebrow muted-eyebrow">
+          {mode === "forgot" || mode === "reset" ? "BẢO MẬT TÀI KHOẢN" : "CHÀO MỪNG BẠN"}
         </div>
+
+        {(mode === "login" || mode === "register") && (
+          <div className="auth-tabs" role="tablist" aria-label="Tài khoản">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "login"}
+              className={mode === "login" ? "active" : ""}
+              onClick={() => changeMode("login")}
+            >
+              Đăng nhập
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "register"}
+              className={mode === "register" ? "active" : ""}
+              onClick={() => changeMode("register")}
+            >
+              Đăng ký
+            </button>
+          </div>
+        )}
+
+        {(mode === "forgot" || mode === "reset") && (
+          <div style={{ marginBottom: 12 }}>
+            <button
+              type="button"
+              onClick={() => changeMode("login")}
+              className="login-back"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, margin: 0, padding: 0 }}
+            >
+              <ArrowLeft size={14} /> Quay lại đăng nhập
+            </button>
+          </div>
+        )}
 
         <h2>
           {mode === "login" ? (
@@ -167,11 +252,19 @@ export function LoginPage({ login, register }: LoginPageProps) {
               <br />
               vào Ticketing.
             </>
-          ) : (
+          ) : mode === "register" ? (
             <>
               Tạo tài khoản
               <br />
               Ticketing của bạn.
+            </>
+          ) : mode === "forgot" ? (
+            <>
+              Quên mật khẩu?
+            </>
+          ) : (
+            <>
+              Đặt lại mật khẩu mới
             </>
           )}
         </h2>
@@ -179,7 +272,11 @@ export function LoginPage({ login, register }: LoginPageProps) {
         <p>
           {mode === "login"
             ? "Chọn vai trò để tiếp tục tới không gian phù hợp."
-            : "Đăng ký tài khoản khách hàng để lưu và quản lý vé."}
+            : mode === "register"
+              ? "Đăng ký tài khoản khách hàng để lưu và quản lý vé."
+              : mode === "forgot"
+                ? "Nhập email đã đăng ký của bạn để nhận mã OTP hoặc hướng dẫn đặt lại mật khẩu."
+                : "Nhập mã xác thực đã nhận cùng mật khẩu mới để hoàn tất khôi phục tài khoản."}
         </p>
 
         {mode === "login" && (
@@ -259,20 +356,61 @@ export function LoginPage({ login, register }: LoginPageProps) {
             />
           </label>
 
-          <label className="form-field">
-            <span>Mật khẩu</span>
-            <input
-              type="password"
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder={mode === "register" ? "Ít nhất 8 ký tự (hoa, thường, số, ký tự đặc biệt)" : "Nhập mật khẩu"}
-            />
-          </label>
-
-          {mode === "register" && (
+          {mode === "reset" && (
             <label className="form-field">
-              <span>Xác nhận mật khẩu</span>
+              <span>Mã xác thực (OTP / Token)</span>
+              <div style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  value={token}
+                  onChange={(event) => setToken(event.target.value)}
+                  placeholder="Nhập mã OTP hoặc mã xác thực"
+                />
+              </div>
+            </label>
+          )}
+
+          {(mode === "login" || mode === "register" || mode === "reset") && (
+            <label className="form-field">
+              <span>{mode === "reset" ? "Mật khẩu mới" : "Mật khẩu"}</span>
+              <input
+                type="password"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={
+                  mode === "register" || mode === "reset"
+                    ? "Ít nhất 8 ký tự (hoa, thường, số, ký tự đặc biệt)"
+                    : "Nhập mật khẩu"
+                }
+              />
+            </label>
+          )}
+
+          {mode === "login" && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: -2 }}>
+              <button
+                type="button"
+                onClick={() => changeMode("forgot")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  padding: 0,
+                  color: "var(--accent, #c84b36)",
+                  fontSize: "11px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                Quên mật khẩu?
+              </button>
+            </div>
+          )}
+
+          {(mode === "register" || mode === "reset") && (
+            <label className="form-field">
+              <span>{mode === "reset" ? "Xác nhận mật khẩu mới" : "Xác nhận mật khẩu"}</span>
               <input
                 type="password"
                 autoComplete="new-password"
@@ -284,12 +422,81 @@ export function LoginPage({ login, register }: LoginPageProps) {
           )}
         </div>
 
+        {infoMessage && (
+          <div className="alert-info" style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <div>{infoMessage}</div>
+            {demoOtp && (
+              <div style={{ marginTop: 4 }}>
+                Mã OTP thử nghiệm của bạn:{" "}
+                <strong
+                  style={{
+                    letterSpacing: 2,
+                    fontSize: "13px",
+                    background: "#ffffff",
+                    padding: "2px 6px",
+                    borderRadius: 4,
+                    border: "1px solid #b9ddf5",
+                  }}
+                >
+                  {demoOtp}
+                </strong>
+              </div>
+            )}
+          </div>
+        )}
+
         {error && <div className="alert-error">{error}</div>}
 
         <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
-          {loading ? "Đang xử lý..." : mode === "login" ? "Tiếp tục" : "Tạo tài khoản"}{" "}
-          <ArrowRight size={17} />
+          {loading
+            ? "Đang xử lý..."
+            : mode === "login"
+              ? "Tiếp tục"
+              : mode === "register"
+                ? "Tạo tài khoản"
+                : mode === "forgot"
+                  ? "Gửi mã xác nhận"
+                  : "Xác nhận đặt lại mật khẩu"}{" "}
+          {mode === "forgot" ? <Mail size={16} /> : mode === "reset" ? <KeyRound size={16} /> : <ArrowRight size={17} />}
         </button>
+
+        {mode === "forgot" && (
+          <div style={{ textAlign: "center", marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => changeMode("reset")}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--surface-muted, #7c7774)",
+                fontSize: "11px",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Đã có mã xác nhận? Đặt lại mật khẩu ngay
+            </button>
+          </div>
+        )}
+
+        {mode === "reset" && (
+          <div style={{ textAlign: "center", marginTop: 8 }}>
+            <button
+              type="button"
+              onClick={() => changeMode("forgot")}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--surface-muted, #7c7774)",
+                fontSize: "11px",
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
+            >
+              Chưa nhận được mã? Gửi lại mã xác nhận
+            </button>
+          </div>
+        )}
 
         {isDemoMode && mode === "login" && (
           <p className="login-demo-note">Chế độ demo · đăng nhập thử không cần mật khẩu</p>
@@ -302,4 +509,3 @@ export function LoginPage({ login, register }: LoginPageProps) {
     </div>
   );
 }
-

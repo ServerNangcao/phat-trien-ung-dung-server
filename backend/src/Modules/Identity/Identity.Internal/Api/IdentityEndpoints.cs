@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Ticketing.Infrastructure.Core;
 using Ticketing.SharedKernel;
 
@@ -29,6 +30,8 @@ internal static class IdentityEndpoints
         group.MapPost("/register", RegisterAsync);
         group.MapPost("/login", LoginAsync);
         group.MapPost("/refresh", RefreshAsync);
+        group.MapPost("/forgot-password", ForgotPasswordAsync);
+        group.MapPost("/reset-password", ResetPasswordAsync);
 
         // ── Protected endpoints (yêu cầu JWT) ──
         group.MapGet("/me", GetProfileAsync).RequireAuthorization();
@@ -366,6 +369,72 @@ internal static class IdentityEndpoints
             IsActive: user.IsActive,
             CreatedAt: user.CreatedAt,
             Roles: roles.ToList().AsReadOnly()));
+    }
+
+    /// <summary>
+    /// POST /api/identity/forgot-password — Yêu cầu link/mã đặt lại mật khẩu.
+    /// </summary>
+    private static async Task<IResult> ForgotPasswordAsync(
+        ForgotPasswordRequest request,
+        IValidator<ForgotPasswordRequest> validator,
+        UserManager<ApplicationUser> userManager,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("Identity.ForgotPassword");
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            var error = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email);
+        if (user is null || !user.IsActive)
+        {
+            return Results.Ok(new ForgotPasswordResponse(
+                "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi."));
+        }
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        logger.LogInformation("Password reset token generated for user {Email}: {Token}", user.Email, token);
+
+        return Results.Ok(new ForgotPasswordResponse(
+            "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi.",
+            ResetToken: token));
+    }
+
+    /// <summary>
+    /// POST /api/identity/reset-password — Đặt lại mật khẩu bằng token/OTP.
+    /// </summary>
+    private static async Task<IResult> ResetPasswordAsync(
+        ResetPasswordRequest request,
+        IValidator<ResetPasswordRequest> validator,
+        UserManager<ApplicationUser> userManager,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("Identity.ResetPassword");
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            var error = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email);
+        if (user is null || !user.IsActive)
+        {
+            return Result.NotFound("Không tìm thấy người dùng hoặc yêu cầu không hợp lệ.").ToHttpResult();
+        }
+
+        var resetResult = await userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        if (!resetResult.Succeeded)
+        {
+            var error = string.Join("; ", resetResult.Errors.Select(e => e.Description));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        logger.LogInformation("Password successfully reset for user {Email}", user.Email);
+        return Results.Ok(new ResetPasswordResponse("Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới."));
     }
 
     /// <summary>

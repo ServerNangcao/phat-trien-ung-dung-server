@@ -88,6 +88,62 @@ public class IdentityTests
         Assert.False(result.IsValid);
     }
 
+    [Fact]
+    public void ForgotPasswordRequestValidator_ValidRequest_PassesValidation()
+    {
+        var validator = new ForgotPasswordRequestValidator();
+        var request = new ForgotPasswordRequest(Email: "user@example.com");
+
+        var result = validator.Validate(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("invalid-email")]
+    [InlineData("   ")]
+    public void ForgotPasswordRequestValidator_InvalidEmail_FailsValidation(string email)
+    {
+        var validator = new ForgotPasswordRequestValidator();
+        var request = new ForgotPasswordRequest(Email: email);
+
+        var result = validator.Validate(request);
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void ResetPasswordRequestValidator_ValidRequest_PassesValidation()
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var request = new ResetPasswordRequest(
+            Email: "user@example.com",
+            Token: "CfDJ8Abc123Token",
+            NewPassword: "NewSecurePassword123!");
+
+        var result = validator.Validate(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("", "token", "NewSecurePassword123!")]
+    [InlineData("invalid-email", "token", "NewSecurePassword123!")]
+    [InlineData("user@example.com", "", "NewSecurePassword123!")]
+    [InlineData("user@example.com", "token", "short")]
+    [InlineData("user@example.com", "token", "")]
+    public void ResetPasswordRequestValidator_InvalidRequest_FailsValidation(
+        string email, string token, string newPassword)
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var request = new ResetPasswordRequest(Email: email, Token: token, NewPassword: newPassword);
+
+        var result = validator.Validate(request);
+
+        Assert.False(result.IsValid);
+    }
+
     // ───────────────────────────────────────────────
     // 2. Domain Entity Tests: ApplicationUser
     // ───────────────────────────────────────────────

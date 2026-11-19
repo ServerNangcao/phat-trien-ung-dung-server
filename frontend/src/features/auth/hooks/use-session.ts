@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiClient, isDemoMode } from "../../../api/client";
-import type { AuthResponse, UserProfileResponse, UserSession } from "../../../api/types";
+import type { AuthResponse, ForgotPasswordResponse, ResetPasswordResponse, UserProfileResponse, UserSession } from "../../../api/types";
 
 function resolveRole(roles: string[]): UserSession["role"] {
   const rolesLower = roles.map((r) => r.toLowerCase());
@@ -124,6 +124,46 @@ export function useSession() {
     setUser(session);
   };
 
+  const forgotPassword = async (email: string): Promise<ForgotPasswordResponse> => {
+    if (isDemoMode) {
+      const mockOtp = Math.floor(100000 + Math.random() * 900000).toString();
+      localStorage.setItem(`ticketing.demo.resetToken:${email.toLowerCase()}`, mockOtp);
+      return {
+        message: "Mã OTP đặt lại mật khẩu đã được tạo và gửi đến email của bạn.",
+        resetToken: mockOtp,
+      };
+    }
+
+    const { data } = await apiClient.post<ForgotPasswordResponse>("/api/identity/forgot-password", {
+      email,
+    });
+    return data;
+  };
+
+  const resetPassword = async (
+    email: string,
+    token: string,
+    newPassword: string,
+  ): Promise<ResetPasswordResponse> => {
+    if (isDemoMode) {
+      const storedToken = localStorage.getItem(`ticketing.demo.resetToken:${email.toLowerCase()}`);
+      if (storedToken && storedToken !== token.trim()) {
+        throw new Error("Mã xác thực không chính xác hoặc đã hết hạn.");
+      }
+      localStorage.removeItem(`ticketing.demo.resetToken:${email.toLowerCase()}`);
+      return {
+        message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.",
+      };
+    }
+
+    const { data } = await apiClient.post<ResetPasswordResponse>("/api/identity/reset-password", {
+      email,
+      token,
+      newPassword,
+    });
+    return data;
+  };
+
   const logout = () => {
     localStorage.removeItem("ticketing.user");
     localStorage.removeItem("ticketing.accessToken");
@@ -132,5 +172,5 @@ export function useSession() {
     queryClient.clear();
   };
 
-  return { user, login, register, logout };
+  return { user, login, register, logout, forgotPassword, resetPassword };
 }

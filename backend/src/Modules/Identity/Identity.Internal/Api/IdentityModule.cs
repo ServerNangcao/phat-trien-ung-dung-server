@@ -42,7 +42,8 @@ public static class IdentityModule
             options.User.RequireUniqueEmail = true;
         })
         .AddRoles<IdentityRole<Guid>>()
-        .AddEntityFrameworkStores<IdentityDbContext>();
+        .AddEntityFrameworkStores<IdentityDbContext>()
+        .AddDefaultTokenProviders();
 
         // Cấu hình JWT Authentication
         var jwtSection = configuration.GetSection("Jwt");

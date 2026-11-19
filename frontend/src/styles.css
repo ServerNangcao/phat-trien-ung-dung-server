@@ -293,6 +293,8 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .terms-field input { accent-color: var(--accent); }
 .terms-field a { color: #c84b36; font-weight: 700; }
 .alert-error { margin-top: 13px; padding: 10px; border-radius: 7px; color: #ad352c; background: #fff1ee; border: 1px solid #f4c6be; font-size: 11px; }
+.alert-success { margin-top: 13px; padding: 10px; border-radius: 7px; color: #1e6d42; background: #eaf7ee; border: 1px solid #bce4c9; font-size: 11px; }
+.alert-info { margin-top: 13px; padding: 10px; border-radius: 7px; color: #1d5f8a; background: #e8f4fc; border: 1px solid #b9ddf5; font-size: 11px; }
 .order-summary h2 { margin: 0 0 18px; font: 700 14px "Manrope", sans-serif; color: var(--surface-text); }
 .summary-event { display: flex; gap: 10px; padding-bottom: 16px; border-bottom: 1px solid var(--surface-border); }
 .summary-event img { width: 62px; height: 62px; border-radius: 7px; object-fit: cover; }
