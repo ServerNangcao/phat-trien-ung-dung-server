@@ -237,6 +237,7 @@ internal sealed class TicketingService : ITicketingModuleApi
                 .SetProperty(t => t.UpdatedAt, DateTime.UtcNow), cancellationToken);
 
         var ticket = await _db.Tickets
+            .AsNoTracking()
             .Include(t => t.TicketType)
             .FirstOrDefaultAsync(t => t.Id == ticketId && t.EventId == eventId, cancellationToken);
 

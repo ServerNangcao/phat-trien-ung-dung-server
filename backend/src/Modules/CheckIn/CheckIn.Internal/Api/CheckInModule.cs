@@ -12,18 +12,18 @@ using Ticketing.Infrastructure.Core;
 
 namespace CheckIn.Internal.Api;
 
-public sealed record CheckInApiRequest(
+internal sealed record CheckInApiRequest(
     Guid EventId,
     string QrPayload,
     string? Gate = null);
 
-public sealed record CheckInScanRequest(
+internal sealed record CheckInScanRequest(
     string? Code = null,
     Guid? EventId = null,
     string? QrPayload = null,
     string? Gate = null);
 
-public sealed record AssignStaffApiRequest(
+internal sealed record AssignStaffApiRequest(
     string StaffId);
 
 /// <summary>

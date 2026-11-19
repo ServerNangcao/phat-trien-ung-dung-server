@@ -12,7 +12,7 @@ using Ticketing.Infrastructure.Core;
 
 namespace Orders.Internal.Api;
 
-public sealed record CheckoutOrderRequest(
+internal sealed record CheckoutOrderRequest(
     Guid ReservationId,
     string? Name = null,
     string? Email = null,

@@ -56,9 +56,8 @@ public class TicketingReservationTests : IDisposable
         Assert.True(reservation.ExpiresAtUtc > DateTime.UtcNow.AddMinutes(9));
 
         // Kiểm tra tồn kho đã giảm còn 98
-        var updated = await db.TicketTypes.FindAsync(ticketType.Id);
-        Assert.NotNull(updated);
-        Assert.Equal(98, updated.AvailableQuantity);
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(98, ticketType.AvailableQuantity);
 
         // Gửi lại cùng idempotency key -> trả về cùng reservation
         var duplicate = await service.ReserveAsync(customerId, eventId, ticketType.Id, 2, idempotencyKey);

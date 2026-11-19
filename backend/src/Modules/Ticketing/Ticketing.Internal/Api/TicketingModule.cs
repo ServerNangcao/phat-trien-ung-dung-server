@@ -14,7 +14,7 @@ using Ticketing.Internal.Infrastructure;
 
 namespace Ticketing.Internal.Api;
 
-public sealed record CreateTicketTypeRequest(
+internal sealed record CreateTicketTypeRequest(
     string Name,
     decimal Price,
     int TotalQuantity,
@@ -22,7 +22,7 @@ public sealed record CreateTicketTypeRequest(
     DateTime? SaleStartsAt = null,
     DateTime? SaleEndsAt = null);
 
-public sealed record ReserveTicketsRequest(
+internal sealed record ReserveTicketsRequest(
     Guid EventId,
     Guid TicketTypeId,
     int Quantity);
