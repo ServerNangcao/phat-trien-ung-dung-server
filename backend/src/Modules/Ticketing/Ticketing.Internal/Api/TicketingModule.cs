@@ -22,10 +22,13 @@ internal sealed record CreateTicketTypeRequest(
     DateTime? SaleStartsAt = null,
     DateTime? SaleEndsAt = null);
 
+internal sealed record ReserveItemRequest(Guid TicketTypeId, int Quantity);
+
 internal sealed record ReserveTicketsRequest(
     Guid EventId,
-    Guid TicketTypeId,
-    int Quantity);
+    Guid? TicketTypeId = null,
+    int? Quantity = null,
+    IReadOnlyList<ReserveItemRequest>? Items = null);
 
 /// <summary>
 /// Điểm vào duy nhất (public) của module Ticketing.
@@ -147,13 +150,17 @@ public static class TicketingModule
                 customerId = Guid.NewGuid(); // Demo/Fallback mode
             }
 
+            var firstItem = request.Items is { Count: > 0 } ? request.Items[0] : null;
+            var targetTicketTypeId = request.TicketTypeId ?? firstItem?.TicketTypeId ?? Guid.Empty;
+            var targetQuantity = request.Quantity ?? firstItem?.Quantity ?? 0;
+
             try
             {
                 var reservation = await ticketingApi.ReserveAsync(
                     customerId,
                     request.EventId,
-                    request.TicketTypeId,
-                    request.Quantity,
+                    targetTicketTypeId,
+                    targetQuantity,
                     idempotencyKey,
                     ct);
 

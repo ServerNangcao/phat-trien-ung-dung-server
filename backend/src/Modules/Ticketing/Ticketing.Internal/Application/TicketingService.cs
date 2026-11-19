@@ -360,7 +360,7 @@ internal sealed class TicketingService : ITicketingModuleApi
         for (var i = 1; i <= quantity; i++)
         {
             var ticketId = Guid.CreateVersion7();
-            var code = $"TK-{ticketId:N}"[..14].ToUpperInvariant();
+            var code = $"TK-{ticketId:N}".ToUpperInvariant();
             var qrSignature = _signer.Sign(ticketId, eventId);
 
             var ticket = Ticket.Issue(

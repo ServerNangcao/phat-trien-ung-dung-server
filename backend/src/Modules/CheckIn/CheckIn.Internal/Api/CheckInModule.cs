@@ -21,6 +21,7 @@ internal sealed record CheckInScanRequest(
     string? Code = null,
     Guid? EventId = null,
     string? QrPayload = null,
+    string? QrCode = null,
     string? Gate = null);
 
 internal sealed record AssignStaffApiRequest(
@@ -61,7 +62,7 @@ public static class CheckInModule
             CheckInDbContext checkInDb,
             CancellationToken ct) =>
         {
-            var rawCode = body.Code ?? body.QrPayload ?? string.Empty;
+            var rawCode = (body.Code ?? body.QrPayload ?? body.QrCode)?.Trim() ?? string.Empty;
             var eventId = body.EventId ?? Guid.Empty;
 
             // Nếu chưa có eventId, thử giải mã từ định dạng QR v1.{ticketId}.{eventId}.{hmac}
