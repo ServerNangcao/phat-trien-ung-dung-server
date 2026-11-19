@@ -28,13 +28,13 @@ export function OrganizerOrdersPage() {
       title="Đơn hàng & người tham dự"
       subtitle="Tra cứu mã đơn, trạng thái thanh toán VNPay và tình trạng check-in tại cổng."
     >
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#E6E4DD] bg-white p-4">
-        <div className="flex flex-1 min-w-[220px] items-center gap-2.5 rounded-xl border border-[#E6E4DD] bg-[#F9F8F4] px-3.5 py-2">
-          <Search size={16} className="text-[#647075]" />
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-[#182226]">
+        <div className="flex flex-1 min-w-[220px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2">
+          <Search size={16} className="text-[#526066]" />
           <input
             aria-label="Tìm đơn hàng hoặc người tham dự"
             placeholder="Tìm theo mã đơn, tên hoặc email..."
-            className="w-full bg-transparent text-sm text-[#182226] outline-none"
+            className="w-full bg-transparent text-sm text-[#182226] placeholder:text-[#7A8494] outline-none"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -47,8 +47,8 @@ export function OrganizerOrdersPage() {
               onClick={() => setPaymentFilter(status)}
               className={`rounded-xl px-3 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${
                 paymentFilter === status
-                  ? "bg-[#182226] text-white"
-                  : "border border-[#E6E4DD] bg-white text-[#526066]"
+                  ? "bg-[#F05B45] text-white"
+                  : "border border-slate-200 bg-white text-[#475458] hover:text-[#182226]"
               }`}
             >
               {status === "ALL" ? "Tất cả" : status}
@@ -57,9 +57,9 @@ export function OrganizerOrdersPage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-[#E6E4DD] bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white text-[#182226]">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="border-b border-[#E6E4DD] bg-[#F9F8F4] text-xs font-bold uppercase tracking-wider text-[#647075]">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-[#526066]">
             <tr>
               <th className="px-5 py-3.5">Mã đơn</th>
               <th className="px-5 py-3.5">Người tham dự</th>
@@ -69,20 +69,20 @@ export function OrganizerOrdersPage() {
               <th className="px-5 py-3.5">Check-in</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#EEECE6]">
+          <tbody className="divide-y divide-slate-200 bg-white">
             {filtered.map((order) => (
-              <tr key={order.orderCode} className="hover:bg-[#F9F8F4]/60">
+              <tr key={order.orderCode} className="hover:bg-slate-50">
                 <td className="px-5 py-4">
                   <p className="font-mono text-xs font-bold text-[#182226]">{order.orderCode}</p>
-                  <p className="text-[11px] text-[#647075]">{order.createdAt}</p>
+                  <p className="text-[11px] text-[#526066]">{order.createdAt}</p>
                 </td>
                 <td className="px-5 py-4">
                   <p className="font-bold text-[#182226]">{order.buyerName}</p>
-                  <p className="text-xs text-[#647075]">{order.buyerEmail}</p>
+                  <p className="text-xs text-[#526066]">{order.buyerEmail}</p>
                 </td>
                 <td className="px-5 py-4">
                   <p className="font-semibold text-[#182226]">{order.eventTitle}</p>
-                  <p className="text-xs text-[#647075]">
+                  <p className="text-xs text-[#526066]">
                     {order.tierName} × {order.quantity}
                   </p>
                 </td>

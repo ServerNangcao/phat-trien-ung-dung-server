@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "../components/common/ErrorBoundary";
 import { SiteLayout } from "../layouts/SiteLayout";
 import { useSession } from "../features/auth/hooks/use-session";
-import { RequireRole } from "../features/auth/components/RequireRole";
+import { RequireAuth, RequireRole } from "../features/auth/components/RequireRole";
 import { LoginPage } from "../features/auth/pages/LoginPage";
 import { DiscoverPage } from "../features/events/pages/DiscoverPage";
 import { EventDetailPage } from "../features/events/pages/EventDetailPage";
@@ -24,7 +24,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-paper text-ink">
+      <div className="min-h-screen bg-[#0B0F17] text-[#F3F5F8]">
         <Routes>
           <Route element={<SiteLayout user={session.user} logout={session.logout} />}>
             <Route path="/" element={<DiscoverPage />} />
@@ -32,14 +32,70 @@ function App() {
             <Route path="/checkout/:id" element={<CheckoutPage />} />
             <Route path="/payment/return" element={<PaymentReturnPage />} />
             <Route path="/my-tickets" element={<MyTicketsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/organizer/analytics" element={<OrganizerAnalyticsPage />} />
-            <Route path="/organizer/builder" element={<OrganizerBuilderPage />} />
-            <Route path="/organizer/inventory" element={<OrganizerInventoryPage />} />
-            <Route path="/organizer/orders" element={<OrganizerOrdersPage />} />
-            <Route path="/admin/moderation" element={<AdminModerationPage />} />
-            <Route path="/admin/refunds" element={<AdminRefundsPage />} />
-            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth user={session.user}>
+                  <ProfilePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/organizer/analytics"
+              element={
+                <RequireRole role="organizer" user={session.user}>
+                  <OrganizerAnalyticsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/organizer/builder"
+              element={
+                <RequireRole role="organizer" user={session.user}>
+                  <OrganizerBuilderPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/organizer/inventory"
+              element={
+                <RequireRole role="organizer" user={session.user}>
+                  <OrganizerInventoryPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/organizer/orders"
+              element={
+                <RequireRole role="organizer" user={session.user}>
+                  <OrganizerOrdersPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/admin/moderation"
+              element={
+                <RequireRole role="admin" user={session.user}>
+                  <AdminModerationPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/admin/refunds"
+              element={
+                <RequireRole role="admin" user={session.user}>
+                  <AdminRefundsPage />
+                </RequireRole>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <RequireRole role="admin" user={session.user}>
+                  <AdminUsersPage />
+                </RequireRole>
+              }
+            />
             <Route
               path="/login"
               element={<LoginPage login={session.login} register={session.register} />}

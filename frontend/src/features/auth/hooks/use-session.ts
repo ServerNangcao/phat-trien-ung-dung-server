@@ -17,10 +17,16 @@ export function useSession() {
     return () => window.removeEventListener("ticketing:session-expired", clearSession);
   }, []);
 
-  const login = async (role: "customer" | "staff", email: string, password: string) => {
+  const login = async (role: UserSession["role"], email: string, password: string) => {
     if (isDemoMode) {
+      const demoNames: Record<UserSession["role"], string> = {
+        customer: "Linh Nguyễn",
+        staff: "Minh Anh · Soát vé",
+        organizer: "Bảo Long · Ban tổ chức",
+        admin: "Thu Hà · Quản trị viên",
+      };
       const demoUser: UserSession = {
-        name: role === "staff" ? "Minh Anh · Soát vé" : "Linh Nguyễn",
+        name: demoNames[role] ?? "Người dùng",
         role,
       };
       localStorage.setItem("ticketing.user", JSON.stringify(demoUser));
@@ -32,10 +38,15 @@ export function useSession() {
     localStorage.setItem("ticketing.accessToken", data.accessToken);
     localStorage.setItem("ticketing.refreshToken", data.refreshToken);
 
-    const isStaff = data.roles.some((r) => r.toLowerCase() === "staff" || r.toLowerCase() === "admin");
+    const rolesLower = data.roles.map((r) => r.toLowerCase());
+    let sessionRole: UserSession["role"] = "customer";
+    if (rolesLower.includes("admin")) sessionRole = "admin";
+    else if (rolesLower.includes("organizer")) sessionRole = "organizer";
+    else if (rolesLower.includes("staff")) sessionRole = "staff";
+
     const session: UserSession = {
       name: data.fullName,
-      role: isStaff ? "staff" : "customer",
+      role: sessionRole,
       email: data.email,
       userId: data.userId,
     };

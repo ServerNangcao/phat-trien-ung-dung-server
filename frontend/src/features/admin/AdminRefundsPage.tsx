@@ -17,9 +17,9 @@ export function AdminRefundsPage() {
       title="Xử lý hoàn tiền"
       subtitle="Phê duyệt hoặc từ chối yêu cầu hoàn tiền của khách hàng trước khi chuyển về cổng thanh toán."
     >
-      <div className="overflow-x-auto rounded-2xl border border-[#E6E4DD] bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white text-[#182226]">
         <table className="w-full min-w-[780px] text-left text-sm">
-          <thead className="border-b border-[#E6E4DD] bg-[#F9F8F4] text-xs font-bold uppercase tracking-wider text-[#647075]">
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-[#526066]">
             <tr>
               <th className="px-5 py-3.5">Mã đơn</th>
               <th className="px-5 py-3.5">Khách hàng</th>
@@ -29,20 +29,20 @@ export function AdminRefundsPage() {
               <th className="px-5 py-3.5 text-right">Thao tác</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#EEECE6]">
+          <tbody className="divide-y divide-slate-200 bg-white">
             {refunds.map((item) => (
-              <tr key={item.id} className="hover:bg-[#F9F8F4]/60">
+              <tr key={item.id} className="hover:bg-slate-50">
                 <td className="px-5 py-4">
                   <p className="font-mono text-xs font-bold text-[#182226]">{item.orderCode}</p>
-                  <p className="text-[11px] text-[#647075]">{item.requestedAt}</p>
+                  <p className="text-[11px] text-[#526066]">{item.requestedAt}</p>
                 </td>
                 <td className="px-5 py-4">
                   <p className="font-bold text-[#182226]">{item.buyerName}</p>
-                  <p className="text-xs text-[#647075]">{item.buyerEmail}</p>
+                  <p className="text-xs text-[#526066]">{item.buyerEmail}</p>
                 </td>
                 <td className="px-5 py-4 max-w-xs">
                   <p className="font-semibold text-[#182226]">{item.eventTitle}</p>
-                  <p className="text-xs text-[#647075]">{item.reason}</p>
+                  <p className="text-xs text-[#526066]">{item.reason}</p>
                 </td>
                 <td className="px-5 py-4 font-bold text-[#182226]">{formatVnd(item.amount)}</td>
                 <td className="px-5 py-4">
@@ -77,7 +77,7 @@ export function AdminRefundsPage() {
                       </button>
                     </div>
                   ) : (
-                    <span className="text-xs text-[#647075]">Đã xử lý</span>
+                    <span className="text-xs text-[#526066]">Đã xử lý</span>
                   )}
                 </td>
               </tr>

@@ -6,7 +6,7 @@ import { StatusBadge } from "../../components/ui/StatusBadge";
 import { OrganizerLayout } from "./OrganizerLayout";
 
 const inputClass =
-  "w-full rounded-xl border border-[#E6E4DD] bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none focus:border-[#F05A3E] focus-visible:ring-2 focus-visible:ring-[#F05A3E]/25";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
 
 export function OrganizerInventoryPage() {
   const [events, setEvents] = useState<ManagedEvent[]>(() => platformDemoApi.getManagedEvents());
@@ -40,32 +40,32 @@ export function OrganizerInventoryPage() {
         </button>
       }
     >
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#E6E4DD] bg-white p-4">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-[#182226]">
         <div className="flex items-center gap-3">
-          <label htmlFor="inv-event" className="text-xs font-bold uppercase tracking-wider text-[#647075]">
+          <label htmlFor="inv-event" className="text-xs font-bold uppercase tracking-wider text-[#526066]">
             Sự kiện:
           </label>
           <select
             id="inv-event"
             value={currentEvent?.id ?? ""}
             onChange={(e) => setSelectedEventId(e.target.value)}
-            className="rounded-xl border border-[#E6E4DD] bg-[#F9F8F4] px-3 py-2 text-sm font-semibold text-[#182226]"
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#182226]"
           >
             {events.map((ev) => (
               <option key={ev.id} value={ev.id}>{ev.title}</option>
             ))}
           </select>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 border border-amber-200">
+        <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
           <Clock3 size={14} />
           <span>Cơ chế giữ chỗ tự động nhả kho sau 10:00 nếu chưa thanh toán</span>
         </div>
       </div>
 
       {currentEvent && (
-        <div className="overflow-x-auto rounded-2xl border border-[#E6E4DD] bg-white">
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white text-[#182226]">
           <table className="w-full min-w-[680px] text-left text-sm">
-            <thead className="border-b border-[#E6E4DD] bg-[#F9F8F4] text-xs font-bold uppercase tracking-wider text-[#647075]">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-[#526066]">
               <tr>
                 <th className="px-5 py-3.5">Hạng vé</th>
                 <th className="px-5 py-3.5">Giá vé</th>
@@ -76,14 +76,14 @@ export function OrganizerInventoryPage() {
                 <th className="px-5 py-3.5">Tối đa/đơn</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#EEECE6]">
+            <tbody className="divide-y divide-slate-200 bg-white">
               {currentEvent.tiers.map((tier) => {
                 const available = Math.max(0, tier.total - tier.sold - tier.reserved);
                 return (
-                  <tr key={tier.id} className="hover:bg-[#F9F8F4]/60">
+                  <tr key={tier.id} className="hover:bg-slate-50">
                     <td className="px-5 py-4">
                       <p className="font-bold text-[#182226]">{tier.name}</p>
-                      <p className="text-xs text-[#647075]">{tier.description}</p>
+                      <p className="text-xs text-[#526066]">{tier.description}</p>
                     </td>
                     <td className="px-5 py-4 font-bold text-[#182226]">{formatVnd(tier.price)}</td>
                     <td className="px-5 py-4">{tier.total}</td>
@@ -94,7 +94,7 @@ export function OrganizerInventoryPage() {
                       </StatusBadge>
                     </td>
                     <td className="px-5 py-4 font-bold text-[#182226]">{available}</td>
-                    <td className="px-5 py-4 text-[#647075]">{tier.maxPerOrder}</td>
+                    <td className="px-5 py-4 text-[#526066]">{tier.maxPerOrder}</td>
                   </tr>
                 );
               })}
@@ -108,11 +108,11 @@ export function OrganizerInventoryPage() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-tier-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
         >
           <form
             onSubmit={handleAddTier}
-            className="w-full max-w-md rounded-2xl border border-[#E6E4DD] bg-white p-6 shadow-xl space-y-4"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 text-[#182226] shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between">
               <h2 id="add-tier-title" className="text-lg font-extrabold text-[#182226]">
@@ -122,7 +122,7 @@ export function OrganizerInventoryPage() {
                 type="button"
                 aria-label="Đóng hộp thoại"
                 onClick={() => setShowModal(false)}
-                className="rounded-lg p-1.5 text-[#647075] hover:bg-[#F3ECE2] cursor-pointer"
+                className="rounded-lg p-1.5 text-[#526066] hover:bg-black/5 cursor-pointer"
               >
                 <X size={18} />
               </button>

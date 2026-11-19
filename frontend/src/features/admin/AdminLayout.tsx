@@ -22,12 +22,12 @@ export function AdminLayout({
       <div className="mb-6">
         <div className="eyebrow muted-eyebrow">QUẢN TRỊ HỆ THỐNG · ADMIN PORTAL</div>
         <h1 className="section-title">{title}</h1>
-        <p className="mt-1 text-sm text-[#647075]">{subtitle}</p>
+        <p className="mt-1 text-sm text-[#9AA6B8]">{subtitle}</p>
       </div>
 
       <nav
         aria-label="Điều hướng Quản trị viên"
-        className="mb-8 flex gap-2 overflow-x-auto border-b border-[#E6E4DD] pb-3"
+        className="mb-8 flex gap-2 overflow-x-auto rounded-xl border border-white/15 bg-[#22B56B] p-2"
       >
         {TABS.map((tab) => {
           const Icon = tab.icon;
@@ -36,10 +36,10 @@ export function AdminLayout({
               key={tab.to}
               to={tab.to}
               className={({ isActive }) =>
-                `inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${
+                `inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
                   isActive
-                    ? "bg-[#182226] text-white"
-                    : "bg-white text-[#526066] border border-[#E6E4DD] hover:border-[#182226]/30"
+                    ? "bg-white text-[#166534] shadow-sm"
+                    : "text-white/90 hover:bg-white/15 hover:text-white"
                 }`
               }
             >

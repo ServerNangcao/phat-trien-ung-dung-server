@@ -11,6 +11,8 @@ interface SiteLayoutProps {
 
 export function SiteLayout({ user, logout }: SiteLayoutProps) {
   const [mobileMenu, setMobileMenu] = useState(false);
+  const isOrganizer = user?.role === "organizer";
+  const isAdmin = user?.role === "admin";
 
   return (
     <>
@@ -32,12 +34,16 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
             <a href="/#categories" className="hover:text-coral">
               Danh mục
             </a>
-            <Link to="/organizer/analytics" className="hover:text-coral">
-              Ban tổ chức
-            </Link>
-            <Link to="/admin/moderation" className="hover:text-coral">
-              Quản trị
-            </Link>
+            {isOrganizer && (
+              <Link to="/organizer/analytics" className="hover:text-coral">
+                Ban tổ chức
+              </Link>
+            )}
+            {isAdmin && (
+              <Link to="/admin/moderation" className="hover:text-coral">
+                Quản trị
+              </Link>
+            )}
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
@@ -45,9 +51,11 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
               <TicketCheck size={19} />
               <span>Vé của tôi</span>
             </Link>
-            <Link to="/profile" className="btn-outline !px-3.5 !py-2">
-              Hồ sơ
-            </Link>
+            {user && (
+              <Link to="/profile" className="btn-outline !px-3.5 !py-2">
+                Hồ sơ
+              </Link>
+            )}
             {user ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold">{user.name.split(" · ")[0]}</span>
@@ -82,18 +90,37 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
             <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>
               Vé của tôi
             </Link>
-            <Link to="/profile" onClick={() => setMobileMenu(false)}>
-              Hồ sơ
-            </Link>
-            <Link to="/organizer/analytics" onClick={() => setMobileMenu(false)}>
-              Ban tổ chức
-            </Link>
-            <Link to="/admin/moderation" onClick={() => setMobileMenu(false)}>
-              Quản trị
-            </Link>
-            <Link to="/login" onClick={() => setMobileMenu(false)}>
-              Đăng nhập
-            </Link>
+            {user && (
+              <Link to="/profile" onClick={() => setMobileMenu(false)}>
+                Hồ sơ
+              </Link>
+            )}
+            {isOrganizer && (
+              <Link to="/organizer/analytics" onClick={() => setMobileMenu(false)}>
+                Ban tổ chức
+              </Link>
+            )}
+            {isAdmin && (
+              <Link to="/admin/moderation" onClick={() => setMobileMenu(false)}>
+                Quản trị
+              </Link>
+            )}
+            {user ? (
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  setMobileMenu(false);
+                }}
+                className="text-left font-semibold text-rose-500"
+              >
+                Đăng xuất
+              </button>
+            ) : (
+              <Link to="/login" onClick={() => setMobileMenu(false)}>
+                Đăng nhập
+              </Link>
+            )}
           </div>
         )}
       </header>

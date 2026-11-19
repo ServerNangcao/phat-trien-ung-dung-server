@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
-import { ArrowRight, Check, QrCode, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, Briefcase, Check, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { isDemoMode } from "../../../api/client";
+import type { UserSession } from "../../../api/types";
 
 interface LoginPageProps {
-  login: (role: "customer" | "staff", email: string, password: string) => Promise<void>;
+  login: (role: UserSession["role"], email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
 }
 
@@ -40,7 +41,7 @@ function extractErrorMessage(exception: unknown, fallback: string): string {
 export function LoginPage({ login, register }: LoginPageProps) {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [role, setRole] = useState<"customer" | "staff">("customer");
+  const [role, setRole] = useState<UserSession["role"]>("customer");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -87,7 +88,13 @@ export function LoginPage({ login, register }: LoginPageProps) {
         navigate("/my-tickets");
       } else {
         await login(role, email, password);
-        navigate(role === "staff" ? "/staff/check-in" : "/my-tickets");
+        const destinations: Record<UserSession["role"], string> = {
+          customer: "/my-tickets",
+          staff: "/staff/check-in",
+          organizer: "/organizer/analytics",
+          admin: "/admin/moderation",
+        };
+        navigate(destinations[role] ?? "/my-tickets");
       }
     } catch (exception) {
       setError(
@@ -176,7 +183,7 @@ export function LoginPage({ login, register }: LoginPageProps) {
         </p>
 
         {mode === "login" && (
-          <div className="role-selector">
+          <div className="role-selector sm:grid-cols-2">
             <button
               type="button"
               onClick={() => setRole("customer")}
@@ -200,6 +207,30 @@ export function LoginPage({ login, register }: LoginPageProps) {
                 <small>Quét vé tại sự kiện</small>
               </span>
               <span className="radio-mark">{role === "staff" && <Check size={12} />}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole("organizer")}
+              className={role === "organizer" ? "selected" : ""}
+            >
+              <Briefcase size={18} />
+              <span>
+                <b>Ban tổ chức</b>
+                <small>Tạo &amp; quản lý sự kiện</small>
+              </span>
+              <span className="radio-mark">{role === "organizer" && <Check size={12} />}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setRole("admin")}
+              className={role === "admin" ? "selected" : ""}
+            >
+              <ShieldCheck size={18} />
+              <span>
+                <b>Quản trị viên</b>
+                <small>Kiểm duyệt &amp; hoàn tiền</small>
+              </span>
+              <span className="radio-mark">{role === "admin" && <Check size={12} />}</span>
             </button>
           </div>
         )}

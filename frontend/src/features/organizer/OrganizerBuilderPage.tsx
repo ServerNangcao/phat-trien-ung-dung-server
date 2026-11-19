@@ -7,7 +7,7 @@ import { OrganizerLayout } from "./OrganizerLayout";
 
 const CATEGORIES: EventCategory[] = ["Âm nhạc", "Nghệ thuật", "Hội thảo", "Ẩm thực", "Thể thao"];
 const inputClass =
-  "w-full rounded-xl border border-[#E6E4DD] bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05A3E] focus-visible:ring-2 focus-visible:ring-[#F05A3E]/25";
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
 const labelClass = "block text-xs font-semibold text-[#526066] mb-1.5";
 
 export function OrganizerBuilderPage() {
@@ -73,8 +73,8 @@ export function OrganizerBuilderPage() {
             onClick={() => setStep(item.num)}
             className={`rounded-xl px-4 py-2 text-xs font-bold transition-colors cursor-pointer ${
               step === item.num
-                ? "bg-[#F05A3E] text-white"
-                : "border border-[#E6E4DD] bg-white text-[#526066] hover:border-[#182226]/30"
+                ? "bg-[#F05B45] text-white"
+                : "border border-slate-200 bg-white text-[#475458] hover:text-[#182226]"
             }`}
           >
             {item.label}
@@ -82,7 +82,7 @@ export function OrganizerBuilderPage() {
         ))}
       </div>
 
-      <form onSubmit={handleSubmit} className="rounded-2xl border border-[#E6E4DD] bg-white p-6 sm:p-8 space-y-6">
+      <form onSubmit={handleSubmit} className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 text-[#182226] space-y-6">
         {step === 1 && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
@@ -164,14 +164,14 @@ export function OrganizerBuilderPage() {
           <div className="space-y-5">
             <label
               htmlFor="ev-poster"
-              className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#D7D4CB] bg-[#F9F8F4] p-8 text-center cursor-pointer hover:border-[#F05A3E] transition-colors"
+              className="flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center cursor-pointer hover:border-[#F05B45] transition-colors"
             >
-              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F05A3E]/10 text-[#F05A3E]">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#F05B45]/10 text-[#F05B45]">
                 <CloudUpload size={24} />
               </span>
               <div>
                 <p className="text-sm font-bold text-[#182226]">Chọn ảnh Poster / Key Visual (16:9 hoặc 4:5)</p>
-                <p className="mt-1 text-xs text-[#647075]">Hỗ trợ PNG, JPG, WebP tối đa 10MB</p>
+                <p className="mt-1 text-xs text-[#526066]">Hỗ trợ PNG, JPG, WebP tối đa 10MB</p>
               </div>
               <input
                 id="ev-poster"
@@ -182,12 +182,12 @@ export function OrganizerBuilderPage() {
               />
             </label>
 
-            <div className="rounded-xl border border-[#E6E4DD] p-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex items-center justify-between text-xs font-semibold">
                 <span className="text-[#182226]">{posterName}</span>
                 <span className="text-emerald-700">{uploadProgress}%</span>
               </div>
-              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#EEECE6]">
+              <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-200">
                 <div className="h-full bg-emerald-500 transition-all" style={{ width: `${uploadProgress}%` }} />
               </div>
               {posterPreview && (
@@ -214,7 +214,7 @@ export function OrganizerBuilderPage() {
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-bold text-[#182226]">
-                <Calendar size={17} className="text-[#F05A3E]" />
+                <Calendar size={17} className="text-[#F05B45]" />
                 <span>Lịch trình chương trình</span>
               </div>
               <button
@@ -228,7 +228,7 @@ export function OrganizerBuilderPage() {
 
             <div className="space-y-3">
               {schedule.map((slot, index) => (
-                <div key={index} className="grid grid-cols-1 gap-3 rounded-xl border border-[#E6E4DD] p-3 sm:grid-cols-12">
+                <div key={index} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-12">
                   <input
                     aria-label="Giờ"
                     className={`${inputClass} sm:col-span-2`}
@@ -265,7 +265,7 @@ export function OrganizerBuilderPage() {
                     type="button"
                     aria-label="Xóa mốc lịch trình"
                     onClick={() => setSchedule(schedule.filter((_, idx) => idx !== index))}
-                    className="flex items-center justify-center rounded-xl border border-[#E6E4DD] text-[#647075] hover:border-rose-300 hover:text-rose-600 sm:col-span-1 cursor-pointer"
+                    className="flex items-center justify-center rounded-xl border border-slate-200 bg-white text-[#526066] hover:border-rose-400 hover:text-rose-600 sm:col-span-1 cursor-pointer"
                   >
                     <Trash2 size={15} />
                   </button>

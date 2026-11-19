@@ -7,7 +7,7 @@ const TONE_CLASSES: Record<BadgeTone, string> = {
   warning: "bg-amber-50 text-amber-800 border-amber-200",
   danger: "bg-rose-50 text-rose-700 border-rose-200",
   neutral: "bg-slate-100 text-slate-700 border-slate-200",
-  accent: "bg-[#F05A3E]/10 text-[#D94735] border-[#F05A3E]/25",
+  accent: "bg-[#F05B45]/10 text-[#D94735] border-[#F05B45]/25",
 };
 
 export function StatusBadge({ tone, children }: { tone: BadgeTone; children: ReactNode }) {

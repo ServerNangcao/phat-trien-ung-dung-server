@@ -14,3 +14,10 @@ export function RequireRole({ role, user, children }: RequireRoleProps) {
   }
   return <>{children}</>;
 }
+
+export function RequireAuth({ user, children }: { user: UserSession | null; children: ReactNode }) {
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
