@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiClient, isDemoMode } from "../../../api/client";
 import type { AuthResponse, UserProfileResponse, UserSession } from "../../../api/types";
 
@@ -10,16 +11,25 @@ function resolveRole(roles: string[]): UserSession["role"] {
   return "customer";
 }
 
-export function useSession() {
-  const [user, setUser] = useState<UserSession | null>(() => {
+function readStoredUser(): UserSession | null {
+  try {
     const saved = localStorage.getItem("ticketing.user");
     return saved ? (JSON.parse(saved) as UserSession) : null;
-  });
+  } catch {
+    localStorage.removeItem("ticketing.user");
+    return null;
+  }
+}
+
+export function useSession() {
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState<UserSession | null>(readStoredUser);
 
   useEffect(() => {
     const clearSession = () => {
       localStorage.removeItem("ticketing.user");
       setUser(null);
+      queryClient.clear();
     };
     window.addEventListener("ticketing:session-expired", clearSession);
 
@@ -43,7 +53,7 @@ export function useSession() {
     }
 
     return () => window.removeEventListener("ticketing:session-expired", clearSession);
-  }, []);
+  }, [queryClient]);
 
   const login = async (
     role: UserSession["role"],
@@ -119,6 +129,7 @@ export function useSession() {
     localStorage.removeItem("ticketing.accessToken");
     localStorage.removeItem("ticketing.refreshToken");
     setUser(null);
+    queryClient.clear();
   };
 
   return { user, login, register, logout };

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import {
@@ -28,12 +28,25 @@ const categories = ["Tất cả", "Âm nhạc", "Nghệ thuật", "Hội thảo"
 const locations = ["Tất cả địa điểm", "TP. Hồ Chí Minh", "Hà Nội", "Đà Nẵng"];
 
 export function DiscoverPage() {
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [category, setCategory] = useState("Tất cả");
   const [location, setLocation] = useState("Tất cả địa điểm");
   const [price, setPrice] = useState("all");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedQuery(query), 250);
@@ -197,9 +210,9 @@ export function DiscoverPage() {
               Hôm nay bạn muốn <em>đi đâu?</em>
             </h2>
           </div>
-          <Link to="#events" className="text-link">
+          <a href="#events" className="text-link">
             Tất cả danh mục <ArrowRight size={16} />
-          </Link>
+          </a>
         </div>
         <div className="category-scroller">
           {[
@@ -238,6 +251,7 @@ export function DiscoverPage() {
           <label className="search-field">
             <Search size={18} />
             <input
+              ref={searchInputRef}
               value={query}
               onChange={(event) => handleFilter(setQuery, event.target.value)}
               placeholder="Bạn đang tìm điều gì?"

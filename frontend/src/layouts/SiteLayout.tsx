@@ -68,9 +68,11 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
                 Đăng nhập
               </Link>
             )}
-            <Link to="/organizer/builder" className="btn-primary !px-5 !py-2.5">
-              Tổ chức sự kiện
-            </Link>
+            {(!user || isOrganizer) && (
+              <Link to="/organizer/builder" className="btn-primary !px-5 !py-2.5">
+                Tổ chức sự kiện
+              </Link>
+            )}
           </div>
 
           <button
