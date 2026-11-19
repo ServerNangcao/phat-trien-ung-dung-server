@@ -6,7 +6,7 @@ import { isDemoMode } from "../../../api/client";
 import type { UserSession } from "../../../api/types";
 
 interface LoginPageProps {
-  login: (role: UserSession["role"], email: string, password: string) => Promise<void>;
+  login: (role: UserSession["role"], email: string, password: string) => Promise<UserSession>;
   register: (name: string, email: string, password: string) => Promise<void>;
 }
 
@@ -87,14 +87,14 @@ export function LoginPage({ login, register }: LoginPageProps) {
         await register(name.trim(), email.trim(), password);
         navigate("/my-tickets");
       } else {
-        await login(role, email, password);
+        const session = await login(role, email, password);
         const destinations: Record<UserSession["role"], string> = {
           customer: "/my-tickets",
           staff: "/staff/check-in",
           organizer: "/organizer/analytics",
           admin: "/admin/moderation",
         };
-        navigate(destinations[role] ?? "/my-tickets");
+        navigate(destinations[session.role] ?? "/my-tickets");
       }
     } catch (exception) {
       setError(

@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Check, Lock, ReceiptText, ShieldCheck, User } from "lucide-react";
+import { isDemoMode } from "../../api/client";
+import { ticketingApi } from "../../api/service";
 import { platformDemoApi } from "../../api/platformDemo";
 import type { UserProfile } from "../../api/types";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -16,6 +18,7 @@ export function ProfilePage() {
   const [savedNotice, setSavedNotice] = useState("");
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [passwordError, setPasswordError] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
 
   const notify = (msg: string) => {
     setSavedNotice(msg);
@@ -35,7 +38,7 @@ export function ProfilePage() {
     notify(updated.twoFactorEnabled ? "Đã bật xác thực 2 lớp (2FA)." : "Đã tắt xác thực 2 lớp (2FA).");
   };
 
-  const handlePasswordSubmit = (event: FormEvent) => {
+  const handlePasswordSubmit = async (event: FormEvent) => {
     event.preventDefault();
     if (passwordForm.next.length < 8) {
       setPasswordError("Mật khẩu mới cần tối thiểu 8 ký tự.");
@@ -46,8 +49,25 @@ export function ProfilePage() {
       return;
     }
     setPasswordError("");
-    setPasswordForm({ current: "", next: "", confirm: "" });
-    notify("Đã đổi mật khẩu thành công.");
+    setPasswordLoading(true);
+
+    try {
+      if (!isDemoMode) {
+        await ticketingApi.auth.changePassword(passwordForm.current, passwordForm.next);
+      }
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      notify("Đã đổi mật khẩu thành công.");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; detail?: string } }; message?: string };
+      const msg =
+        axiosErr.response?.data?.message ||
+        axiosErr.response?.data?.detail ||
+        axiosErr.message ||
+        "Đổi mật khẩu thất bại.";
+      setPasswordError(msg);
+    } finally {
+      setPasswordLoading(false);
+    }
   };
 
   return (
@@ -333,7 +353,9 @@ export function ProfilePage() {
                   </div>
                 </div>
                 {passwordError && <p className="text-xs font-semibold text-rose-600">{passwordError}</p>}
-                <button type="submit" className="btn-primary">Cập nhật mật khẩu</button>
+                <button type="submit" disabled={passwordLoading} className="btn-primary">
+                  {passwordLoading ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+                </button>
               </form>
             </div>
           )}

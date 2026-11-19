@@ -85,11 +85,12 @@ public static class EventsModule
 
         // â”€â”€ Events: Public â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-        // GET /api/events?page=1&pageSize=20&categoryId=...&city=...&minPrice=...&maxPrice=...&search=...
+        // GET /api/events?page=1&pageSize=20&categoryId=...&category=...&city=...&minPrice=...&maxPrice=...&search=...
         events.MapGet("/", async (
             ListEventsHandler handler,
             string? status,
             Guid? categoryId,
+            string? category,
             string? city,
             decimal? minPrice,
             decimal? maxPrice,
@@ -98,7 +99,7 @@ public static class EventsModule
             int pageSize = 20,
             CancellationToken ct = default) =>
         {
-            var query = new ListEventsQuery(status, categoryId, city, minPrice, maxPrice, search, page, pageSize);
+            var query = new ListEventsQuery(status, categoryId, city, minPrice, maxPrice, search, page, pageSize, category);
             var result = await handler.HandleAsync(query, ct);
             return result.ToHttpResult();
         });

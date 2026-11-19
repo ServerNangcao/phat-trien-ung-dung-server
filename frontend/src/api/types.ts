@@ -10,7 +10,8 @@ export interface TicketTier {
 }
 
 export interface EventItem {
-  id: string;
+  id: string;        // slug hoặc id dùng cho URL
+  rawId?: string;    // GUID gốc từ backend dùng để gọi API reserve
   title: string;
   category: EventCategory;
   location: string;
@@ -28,6 +29,7 @@ export interface EventItem {
 export interface Reservation {
   id: string;
   eventId: string;
+  eventSlug?: string;
   tierId: string;
   quantity: number;
   expiresAt: number;

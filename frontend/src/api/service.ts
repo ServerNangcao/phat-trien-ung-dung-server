@@ -69,6 +69,7 @@ function normalizeEvent(raw: any): EventItem {
 
   return {
     id: String(raw.slug || raw.id || ""),
+    rawId: raw.id ? String(raw.id) : undefined,
     title: raw.title || "Sự kiện",
     category: (raw.categoryName || raw.category?.name || raw.category || "Âm nhạc") as EventItem["category"],
     location: raw.venueCity || raw.venue?.city || raw.location || "TP. Hồ Chí Minh",
@@ -109,6 +110,7 @@ export const ticketingApi = {
       pageSize: filters.limit ?? 20,
     };
     if (filters.query) params.search = filters.query;
+    if (filters.category && filters.category !== "Tất cả") params.category = filters.category;
     if (filters.location && filters.location !== "Tất cả địa điểm") params.city = filters.location;
     if (filters.maxPrice) params.maxPrice = filters.maxPrice;
 

@@ -45,12 +45,16 @@ export function EventDetailPage() {
 
   const reserveMutation = useMutation({
     mutationFn: () => {
-      const tierId = selectedTier || eventQuery.data?.tiers[0]?.id;
-      if (!tierId) throw new Error("Sự kiện chưa có hạng vé để đặt.");
-      return ticketingApi.reserve(id, tierId, quantity);
+      const eventData = eventQuery.data;
+      const tierId = selectedTier || eventData?.tiers[0]?.id;
+      if (!eventData || !tierId) throw new Error("Sự kiện chưa có hạng vé để đặt.");
+      return ticketingApi.reserve(eventData.rawId || eventData.id, tierId, quantity);
     },
     onSuccess: (reservation) => {
-      sessionStorage.setItem("ticketing.reservation", JSON.stringify(reservation));
+      sessionStorage.setItem(
+        "ticketing.reservation",
+        JSON.stringify({ ...reservation, eventSlug: id }),
+      );
       navigate(`/checkout/${id}`);
     },
   });

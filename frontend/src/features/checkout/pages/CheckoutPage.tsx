@@ -39,10 +39,13 @@ export function CheckoutPage() {
     reservation ? Math.max(0, Math.ceil((reservation.expiresAt - Date.now()) / 1000)) : 0,
   );
 
+  const isMatchingEvent =
+    !!reservation && (reservation.eventId === id || reservation.eventSlug === id);
+
   const eventQuery = useQuery({
     queryKey: ["event", id],
     queryFn: () => ticketingApi.event(id),
-    enabled: !!reservation && reservation.eventId === id,
+    enabled: isMatchingEvent,
   });
 
   const {
@@ -79,7 +82,7 @@ export function CheckoutPage() {
     },
   });
 
-  if (!reservation || reservation.eventId !== id) {
+  if (!isMatchingEvent) {
     return (
       <div className="checkout-empty">
         <Ticket size={32} />
