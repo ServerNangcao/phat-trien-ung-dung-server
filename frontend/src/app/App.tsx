@@ -24,7 +24,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-[#0B0F17] text-[#F3F5F8]">
+      <div className="min-h-screen bg-paper text-ink">
         <Routes>
           <Route element={<SiteLayout user={session.user} logout={session.logout} />}>
             <Route path="/" element={<DiscoverPage />} />
