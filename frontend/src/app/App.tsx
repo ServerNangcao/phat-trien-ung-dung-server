@@ -10,6 +10,14 @@ import { CheckoutPage } from "../features/checkout/pages/CheckoutPage";
 import { PaymentReturnPage } from "../features/checkout/pages/PaymentReturnPage";
 import { MyTicketsPage } from "../features/my-tickets/pages/MyTicketsPage";
 import { StaffCheckInPage } from "../features/checkin/pages/StaffCheckInPage";
+import { ProfilePage } from "../features/profile/ProfilePage";
+import { OrganizerAnalyticsPage } from "../features/organizer/OrganizerAnalyticsPage";
+import { OrganizerBuilderPage } from "../features/organizer/OrganizerBuilderPage";
+import { OrganizerInventoryPage } from "../features/organizer/OrganizerInventoryPage";
+import { OrganizerOrdersPage } from "../features/organizer/OrganizerOrdersPage";
+import { AdminModerationPage } from "../features/admin/AdminModerationPage";
+import { AdminRefundsPage } from "../features/admin/AdminRefundsPage";
+import { AdminUsersPage } from "../features/admin/AdminUsersPage";
 
 function App() {
   const session = useSession();
@@ -24,6 +32,14 @@ function App() {
             <Route path="/checkout/:id" element={<CheckoutPage />} />
             <Route path="/payment/return" element={<PaymentReturnPage />} />
             <Route path="/my-tickets" element={<MyTicketsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/organizer/analytics" element={<OrganizerAnalyticsPage />} />
+            <Route path="/organizer/builder" element={<OrganizerBuilderPage />} />
+            <Route path="/organizer/inventory" element={<OrganizerInventoryPage />} />
+            <Route path="/organizer/orders" element={<OrganizerOrdersPage />} />
+            <Route path="/admin/moderation" element={<AdminModerationPage />} />
+            <Route path="/admin/refunds" element={<AdminRefundsPage />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
             <Route
               path="/login"
               element={<LoginPage login={session.login} register={session.register} />}
