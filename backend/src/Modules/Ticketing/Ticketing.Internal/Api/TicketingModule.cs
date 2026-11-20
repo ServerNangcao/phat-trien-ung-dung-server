@@ -267,7 +267,7 @@ public static class TicketingModule
                 id = t.Id,
                 eventId = t.EventId,
                 eventTitle = "Vé tham gia sự kiện",
-                image = "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80",
+                image = "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
                 venue = "TP. Hồ Chí Minh",
                 date = t.CreatedAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
                 tierName = t.TicketType != null ? t.TicketType.Name : "Vé tiêu chuẩn",

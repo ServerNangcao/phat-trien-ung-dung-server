@@ -17,10 +17,10 @@ import type {
 } from "./types";
 
 const DEFAULT_IMAGES = [
-  "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85",
-  "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=900&q=80",
+  "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg",
+  "https://cdn.sukienbanve.id.vn/the-sound-of-spring.jpg",
+  "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
+  "https://cdn.sukienbanve.id.vn/ceramic-sunday.jpg",
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,7 +190,7 @@ export const ticketingApi = {
       id: t.id,
       eventId: t.eventId,
       eventTitle: t.eventTitle || "Vé tham gia sự kiện",
-      image: t.image || "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80",
+      image: t.image || "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
       venue: t.venue || "TP. Hồ Chí Minh",
       date: t.date || new Date(t.createdAt || Date.now()).toISOString().slice(0, 10),
       tierName: t.ticketTypeName || t.tierName || "Vé tiêu chuẩn",

@@ -16,7 +16,7 @@ const formatDate = (date?: string) => {
   }).format(d);
 };
 
-const DEFAULT_COVER = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85";
+const DEFAULT_COVER = "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg";
 
 const SAVED_EVENTS_KEY = "ticketing.savedEvents";
 

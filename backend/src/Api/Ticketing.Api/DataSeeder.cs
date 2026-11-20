@@ -233,7 +233,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(19, 30, 0),
             Duration: TimeSpan.FromHours(3),
             Description: "Một đêm nhạc jazz ngoài trời nơi những giai điệu ngẫu hứng gặp ánh đèn thành phố. Thưởng thức những bản phối mới cùng dàn nghệ sĩ độc lập trong không gian mở đầy cảm hứng.",
-            CoverImageKey: "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg",
             Tiers:
             [
                 new("Standard", 590000m, 200, 5),
@@ -250,7 +250,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(16, 0, 0),
             Duration: TimeSpan.FromHours(4),
             Description: "Lễ hội âm nhạc chào mùa mới với những nghệ sĩ trẻ và không gian xanh.",
-            CoverImageKey: "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/the-sound-of-spring.jpg",
             Tiers:
             [
                 new("Early bird", 450000m, 150, 5),
@@ -266,7 +266,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(8, 30, 0),
             Duration: TimeSpan.FromHours(3),
             Description: "Buổi trò chuyện thân mật về sáng tạo, nghề nghiệp và những ngã rẽ thú vị.",
-            CoverImageKey: "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
             Tiers:
             [
                 new("General admission", 180000m, 100, 4),
@@ -282,7 +282,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(9, 0, 0),
             Duration: TimeSpan.FromHours(3),
             Description: "Tự tay tạo nên chiếc cốc của riêng bạn trong không gian studio nhỏ xinh.",
-            CoverImageKey: "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/ceramic-sunday.jpg",
             Tiers:
             [
                 new("Workshop seat", 420000m, 25, 2)
@@ -297,7 +297,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(17, 0, 0),
             Duration: TimeSpan.FromHours(5),
             Description: "Dạo một vòng Sài Gòn qua những món ăn đường phố được tuyển chọn.",
-            CoverImageKey: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/street-food-night.jpg",
             Tiers:
             [
                 new("Taster pass", 250000m, 200, 6),
@@ -313,7 +313,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(5, 30, 0),
             Duration: TimeSpan.FromHours(4),
             Description: "Giải chạy cộng đồng 5 km bên bờ hồ, khép lại năm bằng năng lượng tích cực.",
-            CoverImageKey: "https://images.unsplash.com/photo-1530549387789-4c1017266635?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/run-by-the-river.jpg",
             Tiers:
             [
                 new("5K Runner", 320000m, 300, 5),
@@ -329,7 +329,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(18, 30, 0),
             Duration: TimeSpan.FromHours(4),
             Description: "Một đêm nhạc indie gần gũi với những giai điệu để hát cùng nhau dưới ánh đèn vàng.",
-            CoverImageKey: "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/saigon-indie-live.jpg",
             Tiers:
             [
                 new("General admission", 290000m, 150, 5),
@@ -345,7 +345,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(19, 0, 0),
             Duration: TimeSpan.FromHours(3),
             Description: "Buổi chiếu phim ngoài trời ấm cúng dành cho những người yêu điện ảnh và thành phố.",
-            CoverImageKey: "https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/film-under-stars.jpg",
             Tiers:
             [
                 new("Lawn seat", 150000m, 100, 4),
@@ -361,7 +361,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(9, 30, 0),
             Duration: TimeSpan.FromHours(3),
             Description: "Khám phá hạt cà phê địa phương và tự tay pha một tách theo gu của bạn.",
-            CoverImageKey: "https://images.unsplash.com/photo-1442512595331-e89e73853f31?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/coffee-lab.jpg",
             Tiers:
             [
                 new("Workshop seat", 280000m, 30, 2)
@@ -376,7 +376,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(13, 30, 0),
             Duration: TimeSpan.FromHours(4),
             Description: "Gặp gỡ cộng đồng sáng tạo và cùng trò chuyện về thiết kế tạo tác động tích cực.",
-            CoverImageKey: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/design-for-good.jpg",
             Tiers:
             [
                 new("Regular", 220000m, 120, 5),
@@ -392,7 +392,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(5, 45, 0),
             Duration: TimeSpan.FromHours(2),
             Description: "Đón bình minh bên biển với một buổi yoga nhẹ nhàng, phù hợp cả người mới bắt đầu.",
-            CoverImageKey: "https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/danang-sunrise-yoga.jpg",
             Tiers:
             [
                 new("Open class", 190000m, 60, 3)
@@ -407,7 +407,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(10, 0, 0),
             Duration: TimeSpan.FromHours(8),
             Description: "Một ngày gặp gỡ những thương hiệu thủ công độc lập, nghệ thuật và ý tưởng mới.",
-            CoverImageKey: "https://images.unsplash.com/photo-1531058020387-3be344556be6?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/makers-market.jpg",
             Tiers:
             [
                 new("Day pass", 80000m, 300, 6),
@@ -423,7 +423,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(16, 30, 0),
             Duration: TimeSpan.FromHours(5),
             Description: "Thưởng thức những món ngon miền Trung qua một hành trình ẩm thực bên sông Hàn.",
-            CoverImageKey: "https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/taste-of-central.jpg",
             Tiers:
             [
                 new("Tasting pass", 199000m, 200, 5),
@@ -439,7 +439,7 @@ public static class DataSeeder
             TimeOfDay: new TimeSpan(20, 0, 0),
             Duration: TimeSpan.FromHours(3),
             Description: "Cùng nhau đạp xe khám phá những góc phố quen khi thành phố lên đèn.",
-            CoverImageKey: "https://images.unsplash.com/photo-1511994298241-608e28f14fde?auto=format&fit=crop&w=900&q=80",
+            CoverImageKey: "https://cdn.sukienbanve.id.vn/city-night-ride.jpg",
             Tiers:
             [
                 new("Tự mang xe", 120000m, 100, 4),
