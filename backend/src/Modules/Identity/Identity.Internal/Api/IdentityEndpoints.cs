@@ -27,7 +27,10 @@ internal static class IdentityEndpoints
             .WithTags("Identity");
 
         // ── Public endpoints (không yêu cầu xác thực) ──
-        group.MapPost("/register", RegisterAsync);
+        group.MapPost("/register", RegisterAsync)
+            .Produces<AuthResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         group.MapPost("/login", LoginAsync);
         group.MapPost("/refresh", RefreshAsync);
         group.MapPost("/forgot-password", ForgotPasswordAsync);
@@ -49,7 +52,7 @@ internal static class IdentityEndpoints
     /// <summary>
     /// POST /api/identity/register — Đăng ký tài khoản mới (mặc định role Customer).
     /// </summary>
-    private static async Task<IResult> RegisterAsync(
+    internal static async Task<IResult> RegisterAsync(
         RegisterRequest request,
         IValidator<RegisterRequest> validator,
         UserManager<ApplicationUser> userManager,
@@ -63,18 +66,34 @@ internal static class IdentityEndpoints
             return Result.Validation(error).ToHttpResult();
         }
 
-        // 2. Kiểm tra email đã tồn tại
+        // 2. Kiểm tra email đã tồn tại (pre-check)
         var existingUser = await userManager.FindByEmailAsync(request.Email);
         if (existingUser is not null)
         {
             return Result.Conflict("Email này đã được sử dụng.").ToHttpResult();
         }
 
-        // 3. Tạo user
+        // 3. Tạo user & xử lý race condition mức database
         var user = ApplicationUser.Create(request.Email, request.FullName, request.PhoneNumber);
-        var createResult = await userManager.CreateAsync(user, request.Password);
+        IdentityResult createResult;
+        try
+        {
+            createResult = await userManager.CreateAsync(user, request.Password);
+        }
+        catch (DbUpdateException)
+        {
+            // Bắt xung đột mức DB (Unique Index violation) khi có 2 request chạy đồng thời
+            return Result.Conflict("Email này đã được sử dụng.").ToHttpResult();
+        }
+
         if (!createResult.Succeeded)
         {
+            // Nếu UserManager báo lỗi trùng Email hoặc UserName
+            if (createResult.Errors.Any(e => e.Code is "DuplicateEmail" or "DuplicateUserName"))
+            {
+                return Result.Conflict("Email này đã được sử dụng.").ToHttpResult();
+            }
+
             var error = string.Join("; ", createResult.Errors.Select(e => e.Description));
             return Result.Validation(error).ToHttpResult();
         }

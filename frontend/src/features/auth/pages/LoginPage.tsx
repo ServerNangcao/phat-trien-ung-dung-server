@@ -445,7 +445,47 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
           </div>
         )}
 
-        {error && <div className="alert-error">{error}</div>}
+        {error && (
+          <div className="alert-error" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div>{error}</div>
+            {mode === "register" && error.includes("Email này đã được sử dụng") && (
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => changeMode("login")}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid currentColor",
+                    borderRadius: 4,
+                    padding: "3px 10px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "inherit",
+                  }}
+                >
+                  Đăng nhập ngay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeMode("forgot")}
+                  style={{
+                    background: "transparent",
+                    border: "1px solid currentColor",
+                    borderRadius: 4,
+                    padding: "3px 10px",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    color: "inherit",
+                  }}
+                >
+                  Quên mật khẩu?
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
           {loading
