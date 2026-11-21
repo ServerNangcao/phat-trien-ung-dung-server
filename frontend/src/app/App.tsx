@@ -31,7 +31,14 @@ function App() {
             <Route path="/events/:id" element={<EventDetailPage />} />
             <Route path="/checkout/:id" element={<CheckoutPage />} />
             <Route path="/payment/return" element={<PaymentReturnPage />} />
-            <Route path="/my-tickets" element={<MyTicketsPage />} />
+            <Route
+              path="/my-tickets"
+              element={
+                <RequireAuth user={session.user}>
+                  <MyTicketsPage />
+                </RequireAuth>
+              }
+            />
             <Route
               path="/profile"
               element={

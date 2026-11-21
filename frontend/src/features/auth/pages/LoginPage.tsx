@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { ArrowLeft, ArrowRight, Briefcase, Check, KeyRound, Mail, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { isDemoMode } from "../../../api/client";
@@ -42,6 +42,9 @@ function extractErrorMessage(exception: unknown, fallback: string): string {
 
 export function LoginPage({ login, register, forgotPassword, resetPassword }: LoginPageProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+  const fromUrl = from?.pathname ? `${from.pathname}${from.search ?? ""}` : null;
   const [mode, setMode] = useState<"login" | "register" | "forgot" | "reset">("login");
   const [role, setRole] = useState<UserSession["role"]>("customer");
   const [loading, setLoading] = useState(false);
@@ -117,7 +120,7 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
     try {
       if (mode === "register") {
         await register(name.trim(), email.trim(), password);
-        navigate("/my-tickets");
+        navigate(fromUrl ?? "/my-tickets", { replace: true });
       } else if (mode === "forgot") {
         if (!forgotPassword) {
           throw new Error("Tính năng quên mật khẩu chưa được cấu hình.");
@@ -151,7 +154,7 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
           organizer: "/organizer/analytics",
           admin: "/admin/moderation",
         };
-        navigate(destinations[session.role] ?? "/my-tickets");
+        navigate(fromUrl ?? destinations[session.role] ?? "/my-tickets", { replace: true });
       }
     } catch (exception) {
       const fallbackMsg =

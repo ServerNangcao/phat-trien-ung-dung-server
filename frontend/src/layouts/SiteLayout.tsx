@@ -47,10 +47,12 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi">
-              <TicketCheck size={19} />
-              <span>Vé của tôi</span>
-            </Link>
+            {user && (
+              <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi">
+                <TicketCheck size={19} />
+                <span>Vé của tôi</span>
+              </Link>
+            )}
             {user && (
               <Link to="/profile" className="btn-outline !px-3.5 !py-2">
                 Hồ sơ
@@ -89,9 +91,11 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
             <Link to="/" onClick={() => setMobileMenu(false)}>
               Khám phá
             </Link>
-            <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>
-              Vé của tôi
-            </Link>
+            {user && (
+              <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>
+                Vé của tôi
+              </Link>
+            )}
             {user && (
               <Link to="/profile" onClick={() => setMobileMenu(false)}>
                 Hồ sơ
