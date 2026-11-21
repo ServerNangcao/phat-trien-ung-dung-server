@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { Check, Lock, ReceiptText, ShieldCheck, User } from "lucide-react";
 import { isDemoMode } from "../../api/client";
 import { ticketingApi } from "../../api/service";
-import { platformDemoApi } from "../../api/platformDemo";
 import type { UserProfile } from "../../api/types";
 import { StatusBadge } from "../../components/ui/StatusBadge";
+import { useSession } from "../auth/hooks/use-session";
 
 type ProfileTab = "info" | "vat" | "security";
 
@@ -12,29 +12,130 @@ const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
 const labelClass = "block text-xs font-semibold text-[#526066] mb-1.5";
 
+function getInitialProfile(name?: string, email?: string): UserProfile {
+  const userKey = email || name || "me";
+  const storageKey = `ticketing.profile.${userKey.toLowerCase()}`;
+  const stored = localStorage.getItem(storageKey);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored) as UserProfile;
+      return {
+        ...parsed,
+        fullName: parsed.fullName || name || "",
+        email: email || parsed.email || "",
+      };
+    } catch {
+      // fallback
+    }
+  }
+
+  return {
+    fullName: name || "",
+    email: email || "",
+    phone: "",
+    dob: "",
+    gender: "Nam",
+    idNumber: "",
+    city: "",
+    district: "",
+    address: "",
+    taxCompany: "",
+    taxCode: "",
+    taxAddress: "",
+    taxEmail: "",
+    twoFactorEnabled: false,
+  };
+}
+
 export function ProfilePage() {
+  const { user } = useSession();
+  const storageKey = `ticketing.profile.${(user?.email || user?.name || "me").toLowerCase()}`;
+
   const [tab, setTab] = useState<ProfileTab>("info");
-  const [profile, setProfile] = useState<UserProfile>(() => platformDemoApi.getProfile());
+  const [profile, setProfile] = useState<UserProfile>(() =>
+    getInitialProfile(user?.name, user?.email)
+  );
+  const [saveLoading, setSaveLoading] = useState(false);
   const [savedNotice, setSavedNotice] = useState("");
   const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
   const [passwordError, setPasswordError] = useState("");
   const [passwordLoading, setPasswordLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!isDemoMode && localStorage.getItem("ticketing.accessToken")) {
+      ticketingApi.auth
+        .profile()
+        .then((data) => {
+          if (!isMounted) return;
+          setProfile((prev) => ({
+            ...prev,
+            fullName: data.fullName || prev.fullName,
+            email: data.email || prev.email,
+            phone: data.phoneNumber || prev.phone,
+          }));
+        })
+        .catch(() => {
+          // fallback
+        });
+    } else if (user) {
+      setProfile((prev) => ({
+        ...prev,
+        fullName: prev.fullName || user.name || "",
+        email: user.email || prev.email || "",
+      }));
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   const notify = (msg: string) => {
     setSavedNotice(msg);
     window.setTimeout(() => setSavedNotice(""), 3000);
   };
 
-  const handleSaveProfile = (event: FormEvent) => {
+  const handleSaveProfile = async (event: FormEvent) => {
     event.preventDefault();
-    platformDemoApi.saveProfile(profile);
-    notify(tab === "vat" ? "Đã lưu thông tin xuất hóa đơn VAT." : "Đã cập nhật hồ sơ cá nhân.");
+    setSaveLoading(true);
+    try {
+      if (!isDemoMode && localStorage.getItem("ticketing.accessToken")) {
+        await ticketingApi.auth.updateProfile({
+          fullName: profile.fullName,
+          phoneNumber: profile.phone,
+        });
+      }
+
+      localStorage.setItem(storageKey, JSON.stringify(profile));
+
+      // Cập nhật lại session lưu trong localStorage để Header cập nhật tên mới ngay
+      const savedUserStr = localStorage.getItem("ticketing.user");
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          parsed.name = profile.fullName;
+          if (profile.email) parsed.email = profile.email;
+          localStorage.setItem("ticketing.user", JSON.stringify(parsed));
+          window.dispatchEvent(new Event("ticketing:session-updated"));
+        } catch {
+          // ignore
+        }
+      }
+
+      notify(tab === "vat" ? "Đã lưu thông tin xuất hóa đơn VAT." : "Đã cập nhật hồ sơ cá nhân.");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; detail?: string } }; message?: string };
+      notify(axiosErr.response?.data?.message || axiosErr.response?.data?.detail || "Lưu hồ sơ thất bại.");
+    } finally {
+      setSaveLoading(false);
+    }
   };
 
   const handleToggle2FA = () => {
     const updated = { ...profile, twoFactorEnabled: !profile.twoFactorEnabled };
     setProfile(updated);
-    platformDemoApi.saveProfile(updated);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
     notify(updated.twoFactorEnabled ? "Đã bật xác thực 2 lớp (2FA)." : "Đã tắt xác thực 2 lớp (2FA).");
   };
 
@@ -95,11 +196,11 @@ export function ProfilePage() {
           <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#182226]">
             <div className="flex items-center gap-3.5">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F05B45]/15 text-lg font-extrabold text-[#F05B45]">
-                {profile.fullName.charAt(0).toUpperCase()}
+                {(profile.fullName || user?.name || "U").trim().charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0">
-                <p className="truncate font-bold text-[#182226]">{profile.fullName}</p>
-                <p className="truncate text-xs text-[#526066]">{profile.email}</p>
+                <p className="truncate font-bold text-[#182226]">{profile.fullName || user?.name || "Người dùng"}</p>
+                <p className="truncate text-xs text-[#526066]">{profile.email || user?.email || "Chưa cập nhật email"}</p>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3.5 text-xs">
@@ -153,13 +254,16 @@ export function ProfilePage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="pf-email" className={labelClass}>Email</label>
+                  <label htmlFor="pf-email" className={labelClass}>
+                    Email <span className="font-normal text-slate-400">(Tài khoản đăng nhập)</span>
+                  </label>
                   <input
                     id="pf-email"
                     type="email"
-                    className={inputClass}
+                    className={`${inputClass} bg-slate-50 cursor-not-allowed text-slate-600`}
                     value={profile.email}
-                    onChange={(e) => setProfile({ ...profile, email: e.target.value })}
+                    disabled
+                    title="Email gắn liền với tài khoản đăng nhập"
                     required
                   />
                 </div>
@@ -233,7 +337,9 @@ export function ProfilePage() {
                 />
               </div>
               <div className="pt-2">
-                <button type="submit" className="btn-primary">Lưu thay đổi</button>
+                <button type="submit" disabled={saveLoading} className="btn-primary">
+                  {saveLoading ? "Đang lưu..." : "Lưu thay đổi"}
+                </button>
               </div>
             </form>
           )}
@@ -286,7 +392,9 @@ export function ProfilePage() {
                 </div>
               </div>
               <div className="pt-2">
-                <button type="submit" className="btn-primary">Lưu thông tin VAT</button>
+                <button type="submit" disabled={saveLoading} className="btn-primary">
+                  {saveLoading ? "Đang lưu..." : "Lưu thông tin VAT"}
+                </button>
               </div>
             </form>
           )}

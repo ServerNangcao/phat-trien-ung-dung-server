@@ -33,6 +33,11 @@ export function useSession() {
     };
     window.addEventListener("ticketing:session-expired", clearSession);
 
+    const syncSession = () => {
+      setUser(readStoredUser());
+    };
+    window.addEventListener("ticketing:session-updated", syncSession);
+
     // Xác thực lại quyền thật với backend khi tải trang (tránh giả mạo localStorage)
     if (!isDemoMode && localStorage.getItem("ticketing.accessToken")) {
       apiClient
@@ -52,7 +57,10 @@ export function useSession() {
         });
     }
 
-    return () => window.removeEventListener("ticketing:session-expired", clearSession);
+    return () => {
+      window.removeEventListener("ticketing:session-expired", clearSession);
+      window.removeEventListener("ticketing:session-updated", syncSession);
+    };
   }, [queryClient]);
 
   const login = async (
@@ -70,6 +78,7 @@ export function useSession() {
       const demoUser: UserSession = {
         name: demoNames[role] ?? "Người dùng",
         role,
+        email: email.trim() || `${role}@ticketing.demo`,
       };
       localStorage.setItem("ticketing.user", JSON.stringify(demoUser));
       setUser(demoUser);
@@ -99,7 +108,7 @@ export function useSession() {
       if (accounts.some((account) => account.email.toLocaleLowerCase() === email.toLocaleLowerCase())) {
         throw new Error("Email này đã được đăng ký.");
       }
-      const demoUser: UserSession = { name, role: "customer" };
+      const demoUser: UserSession = { name, role: "customer", email: email.trim() };
       localStorage.setItem("ticketing.demo.accounts", JSON.stringify([...accounts, { name, email }]));
       localStorage.setItem("ticketing.user", JSON.stringify(demoUser));
       setUser(demoUser);

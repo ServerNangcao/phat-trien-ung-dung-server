@@ -102,6 +102,10 @@ export const ticketingApi = {
       const { data } = await apiClient.get<UserProfileResponse>("/api/identity/me");
       return data;
     },
+    updateProfile: async (input: { fullName: string; phoneNumber?: string }) => {
+      const { data } = await apiClient.put<UserProfileResponse>("/api/identity/me", input);
+      return data;
+    },
     changePassword: async (currentPassword: string, newPassword: string) => {
       await apiClient.post("/api/identity/change-password", { currentPassword, newPassword });
     },
