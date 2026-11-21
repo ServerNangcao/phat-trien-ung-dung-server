@@ -343,6 +343,15 @@ internal sealed class TestOrdersModuleApi(EventRevenueSummaryDto summary) : IOrd
 
 internal sealed class TestCheckInModuleApi(EventCheckInSummaryDto summary) : ICheckInModuleApi
 {
+    public Task<int> GetCheckedInCountAsync(Guid eventId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(summary.TotalCheckedIn);
+
+    public Task<CheckInResultDto> CheckInAsync(CheckInRequestDto request, string staffId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new CheckInResultDto("Valid", Guid.NewGuid(), "VIP", DateTime.UtcNow, "Valid"));
+
+    public Task AssignStaffAsync(Guid eventId, string staffId, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
     public Task<EventCheckInSummaryDto> GetEventCheckInSummaryAsync(Guid eventId, CancellationToken cancellationToken = default) =>
         Task.FromResult(summary);
 
@@ -352,6 +361,27 @@ internal sealed class TestCheckInModuleApi(EventCheckInSummaryDto summary) : ICh
 
 internal sealed class TestTicketingModuleApi(IReadOnlyList<TicketTypeSummaryDto> tiers) : ITicketingModuleApi
 {
+    public Task<IReadOnlyList<TicketTypeDto>> GetTypesAsync(Guid eventId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TicketTypeDto>>([]);
+
+    public Task<ReservationDto> ReserveAsync(Guid customerId, Guid eventId, Guid ticketTypeId, int quantity, string idempotencyKey, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new ReservationDto(Guid.NewGuid(), eventId, ticketTypeId, customerId, quantity, 0, DateTime.UtcNow.AddMinutes(10), "Confirmed"));
+
+    public Task<ReservationDto?> GetReservationAsync(Guid id, CancellationToken cancellationToken = default) =>
+        Task.FromResult<ReservationDto?>(null);
+
+    public Task MarkPaymentPendingAsync(Guid id, Guid customerId, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    public Task ReleaseAsync(Guid id, Guid customerId, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
+    public Task<IReadOnlyList<TicketDto>> GetMyTicketsAsync(Guid customerId, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TicketDto>>([]);
+
+    public Task<IReadOnlyList<TicketDto>> IssueTicketsForOrderAsync(Guid orderId, Guid eventId, Guid customerId, string customerEmail, string customerName, string eventTitle, Guid ticketTypeId, string ticketTypeName, decimal unitPrice, int quantity, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<TicketDto>>([]);
+
     public Task<RedeemTicketResult> RedeemTicketAsync(string qrPayload, Guid eventId, string staffId, CancellationToken cancellationToken = default) =>
         Task.FromResult(RedeemTicketResult.Valid(Guid.NewGuid(), qrPayload, "VIP"));
 

@@ -5,6 +5,7 @@ using Orders.Internal.Api;
 using CheckIn.Internal.Api;
 using Notifications.Internal.Api;
 using Ticketing.Infrastructure.Core;
+using Ticketing.Api.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,23 @@ builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.WithOrigins(
+                  "http://localhost:5173",
+                  "http://127.0.0.1:5173",
+                  "http://localhost:3000",
+                  "https://sukienbanve.id.vn",
+                  "https://api.sukienbanve.id.vn")
+              .SetIsOriginAllowedToAllowWildcardSubdomains()
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+});
 
 // ───────────────────────────────────────────────
 // 2. Nạp từng module nghiệp vụ
@@ -34,8 +52,18 @@ var app = builder.Build();
 // ───────────────────────────────────────────────
 // 3. Middleware Pipeline
 // ───────────────────────────────────────────────
+app.UseSecurityHeaders();
+app.UseCors();
+
+var shouldApplyMigrations = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("ApplyMigrationsOnStartup");
+if (shouldApplyMigrations)
+{
+    await app.Services.ApplyDatabaseMigrationsAsync();
+}
+
 if (app.Environment.IsDevelopment())
 {
+    await Ticketing.Api.DataSeeder.SeedAsync(app.Services);
     app.MapOpenApi();
 }
 

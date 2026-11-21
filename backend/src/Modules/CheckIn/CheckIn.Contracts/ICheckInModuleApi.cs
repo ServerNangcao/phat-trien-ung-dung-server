@@ -1,4 +1,13 @@
-﻿namespace CheckIn.Contracts;
+namespace CheckIn.Contracts;
+
+public sealed record CheckInRequestDto(Guid EventId, string QrPayload, string? Gate);
+
+public sealed record CheckInResultDto(
+    string Status,
+    Guid? TicketId,
+    string? TicketTypeName,
+    DateTime? ScannedAtUtc,
+    string Message);
 
 public sealed record EventCheckInSummaryDto(
     Guid EventId,
@@ -11,6 +20,10 @@ public sealed record EventCheckInSummaryDto(
 /// </summary>
 public interface ICheckInModuleApi
 {
+    Task<int> GetCheckedInCountAsync(Guid eventId, CancellationToken cancellationToken = default);
+    Task<CheckInResultDto> CheckInAsync(CheckInRequestDto request, string staffId, CancellationToken cancellationToken = default);
+    Task AssignStaffAsync(Guid eventId, string staffId, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Lấy tổng số lượng vé đã check-in thành công vào cổng của một sự kiện.
     /// </summary>

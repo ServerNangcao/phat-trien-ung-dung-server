@@ -23,6 +23,9 @@ internal sealed class ReservationConfiguration : IEntityTypeConfiguration<Reserv
         builder.Property(x => x.EventId)
             .IsRequired();
 
+        builder.Property(x => x.IdempotencyKey)
+            .HasMaxLength(100);
+
         builder.Property(x => x.Status)
             .IsRequired()
             .HasMaxLength(50);
@@ -43,6 +46,8 @@ internal sealed class ReservationConfiguration : IEntityTypeConfiguration<Reserv
         builder.HasIndex(x => x.ExpiresAt)
             .HasDatabaseName("ix_reservations_expiry")
             .HasFilter("\"Status\" IN ('Active', 'PaymentPending')");
+
+        builder.HasIndex(x => new { x.CustomerId, x.IdempotencyKey })
+            .HasDatabaseName("ix_reservations_customer_idempotency");
     }
 }
-

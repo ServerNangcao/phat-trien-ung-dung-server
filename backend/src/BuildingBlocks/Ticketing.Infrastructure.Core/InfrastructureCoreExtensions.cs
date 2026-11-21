@@ -4,12 +4,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Ticketing.Infrastructure.Core.Outbox;
 using Ticketing.Infrastructure.Core.Storage;
+using Ticketing.SharedKernel;
 
 namespace Ticketing.Infrastructure.Core;
 
 /// <summary>
 /// Extension method để Host đăng ký hạ tầng dùng chung:
-/// OutboxWorker, OutboxCleanupWorker, OutboxOptions, IFileStorage (MinIO / R2 / S3).
+/// IClock, OutboxWorker, OutboxCleanupWorker, OutboxOptions, IFileStorage (MinIO / R2 / S3).
 /// Gọi một lần trong Program.cs.
 /// </summary>
 public static class InfrastructureCoreExtensions
@@ -18,6 +19,9 @@ public static class InfrastructureCoreExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // System clock
+        services.AddSingleton<IClock, SystemClock>();
+
         // Outbox options
         services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
 

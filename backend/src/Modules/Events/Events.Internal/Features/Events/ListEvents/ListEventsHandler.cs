@@ -16,7 +16,8 @@ internal sealed record ListEventsQuery(
     decimal? MaxPrice = null,
     string? Search = null,
     int Page = 1,
-    int PageSize = 20);
+    int PageSize = 20,
+    string? Category = null);
 
 internal sealed record EventSummaryResponse(
     Guid Id,
@@ -68,6 +69,11 @@ internal sealed class ListEventsHandler(EventsDbContext db)
         // Lọc theo Category
         if (query.CategoryId.HasValue)
             q = q.Where(e => e.CategoryId == query.CategoryId.Value);
+        else if (!string.IsNullOrWhiteSpace(query.Category) && query.Category != "Tất cả")
+        {
+            var cat = query.Category.Trim();
+            q = q.Where(e => e.Category.Name == cat || EF.Functions.ILike(e.Category.Name, $"%{cat}%"));
+        }
 
         // Lọc theo thành phố
         if (!string.IsNullOrWhiteSpace(query.City))

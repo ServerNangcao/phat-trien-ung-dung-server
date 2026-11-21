@@ -17,6 +17,11 @@ internal sealed class Ticket : BaseEntity<Guid>
     public Guid EventId { get; private set; }
 
     /// <summary>
+    /// Tham chiếu khách hàng sở hữu vé trong Identity (không có FK cross-schema).
+    /// </summary>
+    public Guid CustomerId { get; private set; }
+
+    /// <summary>
     /// Số thứ tự vé trong (OrderId, TicketTypeId).
     /// </summary>
     public int Sequence { get; private set; }
@@ -52,15 +57,18 @@ internal sealed class Ticket : BaseEntity<Guid>
         Guid orderId,
         Guid ticketTypeId,
         Guid eventId,
+        Guid customerId,
         int sequence,
         string code,
         string qrSignature,
-        string customerEmail) => new()
+        string customerEmail,
+        Guid? id = null) => new()
     {
-        Id = Guid.CreateVersion7(),
+        Id = id ?? Guid.CreateVersion7(),
         OrderId = orderId,
         TicketTypeId = ticketTypeId,
         EventId = eventId,
+        CustomerId = customerId,
         Sequence = sequence,
         Code = code,
         QrSignature = qrSignature,
@@ -84,4 +92,3 @@ internal sealed class Ticket : BaseEntity<Guid>
         UpdatedAt = DateTime.UtcNow;
     }
 }
-

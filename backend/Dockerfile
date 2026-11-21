@@ -41,8 +41,7 @@ COPY backend/tests/ tests/
 # Build & publish
 RUN dotnet publish src/Api/Ticketing.Api/Ticketing.Api.csproj \
     -c Release \
-    -o /app/publish \
-    --no-restore
+    -o /app/publish
 
 # ─── Stage 2: Runtime ───
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
