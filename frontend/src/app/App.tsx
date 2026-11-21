@@ -12,7 +12,7 @@ import {
   Sparkles, Ticket, TicketCheck, UserRound, X,
 } from "lucide-react";
 import type { Html5Qrcode } from "html5-qrcode";
-import { apiClient, isDemoMode } from "../api/client";
+import { apiClient, getApiErrorMessage, isConflictError, isDemoMode } from "../api/client";
 import { ticketingApi } from "../api/service";
 import { EVENT_PAGE_SIZE, type CheckInStatus, type EventItem, type PurchasedTicket, type Reservation, type TicketTier, type UserRole } from "../api/types";
 import { AdminModerationPage } from "../features/admin/AdminModerationPage";
@@ -141,7 +141,7 @@ function SiteLayout({ user, logout }: { user: UserSession | null; logout: () => 
             {isStaff && <Link to="/staff/check-in" className="hover:text-white transition-colors">Soát vé</Link>}
           </nav>
           <div className="hidden items-center gap-3 md:flex">
-            <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi"><TicketCheck size={19} /><span>Vé của tôi</span></Link>
+            {user && <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi"><TicketCheck size={19} /><span>Vé của tôi</span></Link>}
             {user && <Link to="/profile" className="btn-outline !px-3.5 !py-2">Hồ sơ</Link>}
             {user ? <div className="flex items-center gap-3"><span className="text-sm font-semibold text-white">{user.name.split(" · ")[0]}</span><button className="btn-quiet" onClick={logout}>Đăng xuất</button></div>
               : <Link to="/login" className="btn-outline">Đăng nhập</Link>}
@@ -151,7 +151,7 @@ function SiteLayout({ user, logout }: { user: UserSession | null; logout: () => 
         </div>
         {mobileMenu && <div className="mobile-menu">
           <Link to="/" onClick={() => setMobileMenu(false)}>Khám phá</Link>
-          <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>Vé của tôi</Link>
+          {user && <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>Vé của tôi</Link>}
           {user && <Link to="/profile" onClick={() => setMobileMenu(false)}>Hồ sơ</Link>}
           {isOrganizer && <Link to="/organizer/analytics" onClick={() => setMobileMenu(false)}>Ban tổ chức</Link>}
           {isAdmin && <Link to="/admin/moderation" onClick={() => setMobileMenu(false)}>Quản trị</Link>}
@@ -307,6 +307,11 @@ function EventPage() {
       sessionStorage.setItem("ticketing.reservation", JSON.stringify(reservation));
       navigate(`/checkout/${id}`);
     },
+    onError: (err) => {
+      if (isConflictError(err)) {
+        void eventQuery.refetch();
+      }
+    },
   });
   if (eventQuery.isLoading) return <PageLoading />;
   if (eventQuery.isError || !eventQuery.data) return <PageMissing />;
@@ -325,7 +330,15 @@ function EventPage() {
         <div className="quantity-row"><div><b>Số lượng vé</b><small>Tối đa 6 vé / đơn</small></div><div className="quantity-picker"><button disabled={quantity <= 1} onClick={() => setQuantity(quantity - 1)} aria-label="Giảm số lượng"><Minus size={15} /></button><b>{quantity}</b><button disabled={quantity >= 6 || quantity >= tier.remaining} onClick={() => setQuantity(quantity + 1)} aria-label="Tăng số lượng"><Plus size={15} /></button></div></div>
         <div className="total-row"><span>Tổng cộng</span><b>{formatMoney(tier.price * quantity)}</b></div>
         <button className="btn-primary w-full justify-center" disabled={reserveMutation.isPending} onClick={() => reserveMutation.mutate()}>{reserveMutation.isPending ? "Đang giữ vé..." : "Giữ vé & tiếp tục"} <ArrowRight size={17} /></button>
-        {reserveMutation.isError && <p className="form-error">{(reserveMutation.error as Error).message}</p>}
+        {reserveMutation.isError && (
+          <p className="form-error">
+            {getApiErrorMessage(
+              reserveMutation.error,
+              "Không thể giữ vé lúc này. Vui lòng thử lại.",
+              "Số lượng vé còn lại không đủ hoặc vừa có người đặt trước (409). Đã cập nhật lại số lượng vé mới nhất.",
+            )}
+          </p>
+        )}
         <p className="secure-note"><LockKeyhole size={13} /> Giữ vé miễn phí trong 10 phút</p>
       </aside>
     </div>
@@ -370,6 +383,12 @@ function CheckoutPage() {
       if (isDemoMode) navigate(result.paymentUrl);
       else window.location.assign(result.paymentUrl);
     },
+    onError: (err) => {
+      if (isConflictError(err)) {
+        sessionStorage.removeItem("ticketing.reservation");
+        localStorage.removeItem("ticketing.demo.reservation");
+      }
+    },
   });
   if (!reservation || reservation.eventId !== id) return <div className="checkout-empty"><Ticket size={32} /><h1>Chưa có vé đang giữ</h1><p>Chọn hạng vé để bắt đầu đặt chỗ nhé.</p><Link to={`/events/${id}`} className="btn-primary">Quay lại sự kiện <ArrowRight size={17} /></Link></div>;
   if (seconds <= 0) return <div className="checkout-empty"><Clock3 size={32} /><h1>Hết thời gian giữ vé</h1><p>Để đảm bảo số lượng vé chính xác, bạn cần chọn vé lại.</p><Link to={`/events/${id}`} className="btn-primary">Chọn vé lại <ArrowRight size={17} /></Link></div>;
@@ -385,7 +404,22 @@ function CheckoutPage() {
         <div className="step-label payment-label"><i>02</i><div><b>Phương thức thanh toán</b><span>Bảo mật theo tiêu chuẩn thanh toán</span></div></div>
         <div className="payment-choice"><span className="payment-radio" /><span className="vnpay-mark">VNPAY</span><span><b>Ví điện tử / Thẻ ngân hàng</b><small>ATM nội địa, Visa, Mastercard, QR Pay</small></span><ShieldCheck size={17} className="payment-shield" /></div>
         <label className="terms-field"><input type="checkbox" {...register("accepted")} /><span>Tôi đồng ý với <a href="#terms">Điều khoản & Chính sách</a> của Ticketing.</span></label>{errors.accepted && <small className="form-error">{errors.accepted.message}</small>}
-        {checkoutMutation.isError && <div className="alert-error">{(checkoutMutation.error as Error).message}</div>}
+        {checkoutMutation.isError && (
+          <div className="alert-error">
+            <p className="m-0">
+              {getApiErrorMessage(
+                checkoutMutation.error,
+                "Không thể khởi tạo đơn hàng. Vui lòng thử lại.",
+                "Phiên giữ vé này đã được xử lý hoặc bị xung đột tồn kho (409). Vui lòng chọn vé lại.",
+              )}
+            </p>
+            {isConflictError(checkoutMutation.error) && (
+              <Link to={`/events/${id}`} className="mt-2 inline-flex items-center gap-1 font-bold underline">
+                Quay lại chọn vé mới <ArrowRight size={14} />
+              </Link>
+            )}
+          </div>
+        )}
       </section>
       <aside className="order-summary"><h2>Đơn hàng của bạn</h2>{event && <div className="summary-event"><img src={event.image} alt="" /><div><b>{event.title}</b><span>{formatDate(event.date)} · {event.time}</span><span>{event.venue}</span></div></div>}
         <div className="summary-line"><span>{tier?.name ?? "Vé"} × {reservation.quantity}</span><b>{formatMoney((tier?.price ?? 0) * reservation.quantity)}</b></div><div className="summary-line subtle"><span>Phí dịch vụ</span><b>Miễn phí</b></div><div className="summary-total"><span>Tổng thanh toán</span><b>{formatMoney((tier?.price ?? 0) * reservation.quantity)}</b></div>
@@ -475,7 +509,15 @@ function LoginPage({ login, register }: {
         navigate(destinations[role]);
       }
     }
-    catch (exception) { setError((exception as Error).message || (mode === "login" ? "Không thể đăng nhập." : "Không thể tạo tài khoản.")); }
+    catch (exception) {
+      setError(
+        getApiErrorMessage(
+          exception,
+          mode === "login" ? "Không thể đăng nhập." : "Không thể tạo tài khoản.",
+          "Email này đã được đăng ký (409). Vui lòng đăng nhập hoặc dùng email khác.",
+        ),
+      );
+    }
     finally { setLoading(false); }
   };
   const changeMode = (nextMode: "login" | "register") => {

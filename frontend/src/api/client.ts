@@ -55,3 +55,28 @@ apiClient.interceptors.response.use(
     return apiClient(request);
   },
 );
+
+export function isConflictError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 409;
+}
+
+export function getApiErrorMessage(
+  error: unknown,
+  fallback: string,
+  conflictFallback?: string,
+): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as
+      | { detail?: string; message?: string; error?: string; title?: string }
+      | undefined;
+    const serverMsg = data?.detail || data?.message || data?.error;
+    if (error.response?.status === 409) {
+      return serverMsg || conflictFallback || "Dữ liệu bị xung đột (409). Vui lòng tải lại và thử lại.";
+    }
+    if (serverMsg) return serverMsg;
+  }
+  if (error instanceof Error && !error.message.startsWith("Request failed with status code")) {
+    return error.message;
+  }
+  return fallback;
+}
