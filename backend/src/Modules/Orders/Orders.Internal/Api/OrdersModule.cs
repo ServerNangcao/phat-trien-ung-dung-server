@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Orders.Contracts;
 using Orders.Internal.Domain;
 using Orders.Internal.Infrastructure;
 using Ticketing.Contracts;
@@ -35,6 +36,8 @@ public static class OrdersModule
             configuration: configuration);
 
         services.AddModuleValidators(typeof(OrdersModule).Assembly);
+
+        services.AddScoped<IOrdersModuleApi, OrdersModuleApi>();
 
         return services;
     }

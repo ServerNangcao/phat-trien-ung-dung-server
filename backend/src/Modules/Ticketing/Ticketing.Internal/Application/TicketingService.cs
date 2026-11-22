@@ -428,4 +428,27 @@ internal sealed class TicketingService : ITicketingModuleApi
 
         return ticketDtos;
     }
+
+    /// <summary>
+    /// Lấy danh sách thông tin các hạng vé của sự kiện (tên, giá, tổng số lượng, đã bán).
+    /// </summary>
+    public async Task<IReadOnlyList<TicketTypeSummaryDto>> GetTicketTypesByEventIdAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default)
+    {
+        var ticketTypes = await _db.TicketTypes
+            .Where(tt => tt.EventId == eventId)
+            .OrderBy(tt => tt.Price)
+            .Select(tt => new TicketTypeSummaryDto(
+                tt.Id,
+                tt.EventId,
+                tt.Name,
+                tt.Price,
+                tt.TotalQuantity,
+                tt.SoldQuantity,
+                tt.AvailableQuantity))
+            .ToListAsync(cancellationToken);
+
+        return ticketTypes;
+    }
 }

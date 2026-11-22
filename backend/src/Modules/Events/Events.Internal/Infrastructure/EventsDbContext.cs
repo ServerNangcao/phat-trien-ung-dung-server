@@ -17,6 +17,7 @@ internal sealed class EventsDbContext : BaseDbContext
     public DbSet<Venue> Venues => Set<Venue>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<EventStaff> EventStaff => Set<EventStaff>();
+    public DbSet<EventStatistics> EventStatistics => Set<EventStatistics>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

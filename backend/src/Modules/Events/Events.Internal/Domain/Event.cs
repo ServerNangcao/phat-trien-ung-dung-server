@@ -90,6 +90,21 @@ internal sealed class Event : BaseEntity<Guid>
         UpdatedAt = DateTime.UtcNow;
     }
 
+    public void Cancel(string? reason = null)
+    {
+        if (Status == EventStatus.Ended || Status == EventStatus.Cancelled || Status == EventStatus.Rejected)
+        {
+            throw new InvalidOperationException($"Không thể hủy sự kiện ở trạng thái {Status}.");
+        }
+
+        Status = EventStatus.Cancelled;
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            RejectReason = reason;
+        }
+        UpdatedAt = DateTime.UtcNow;
+    }
+
     /// <summary>
     /// Cap nhat khoang gia ve — duoc goi khi nhan TicketTypesChanged tu Ticketing module.
     /// </summary>

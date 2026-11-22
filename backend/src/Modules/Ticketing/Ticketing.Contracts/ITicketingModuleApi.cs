@@ -167,6 +167,13 @@ public interface ITicketingModuleApi
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Lấy danh sách thông tin các hạng vé của sự kiện (tên, giá, tổng số lượng, đã bán).
+    /// </summary>
+    Task<IReadOnlyList<TicketTypeSummaryDto>> GetTicketTypesByEventIdAsync(
+        Guid eventId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Phát hành vé điện tử có mã QR ký số HMAC sau khi đơn hàng thanh toán thành công (FR-17).
     /// </summary>
     Task<IReadOnlyList<TicketDto>> IssueTicketsForOrderAsync(
@@ -182,3 +189,12 @@ public interface ITicketingModuleApi
         int quantity,
         CancellationToken cancellationToken = default);
 }
+
+public sealed record TicketTypeSummaryDto(
+    Guid Id,
+    Guid EventId,
+    string Name,
+    decimal Price,
+    int TotalQuantity,
+    int SoldQuantity,
+    int AvailableQuantity);

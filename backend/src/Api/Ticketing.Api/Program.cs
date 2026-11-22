@@ -16,6 +16,8 @@ builder.Services.AddInfrastructureCore(builder.Configuration);
 
 builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
+builder.Services.AddAuthentication();
+builder.Services.AddAuthorization();
 
 builder.Services.AddCors(options =>
 {

@@ -12,7 +12,7 @@ internal sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         {
             t.HasCheckConstraint("ck_events_dates", "\"EndsAt\" > \"StartsAt\"");
             t.HasCheckConstraint("ck_events_status",
-                "\"Status\" IN ('Draft','PendingApproval','OnSale','Ended','Rejected')");
+                "\"Status\" IN ('Draft','PendingApproval','OnSale','Ended','Rejected','Cancelled')");
         });
 
         builder.HasKey(x => x.Id);

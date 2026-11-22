@@ -163,7 +163,7 @@ namespace Events.Internal.Infrastructure.Migrations
                         {
                             t.HasCheckConstraint("ck_events_dates", "\"EndsAt\" > \"StartsAt\"");
 
-                            t.HasCheckConstraint("ck_events_status", "\"Status\" IN ('Draft','PendingApproval','OnSale','Ended','Rejected')");
+                            t.HasCheckConstraint("ck_events_status", "\"Status\" IN ('Draft','PendingApproval','OnSale','Ended','Rejected','Cancelled')");
                         });
                 });
 
@@ -178,6 +178,52 @@ namespace Events.Internal.Infrastructure.Migrations
                     b.HasKey("EventId", "StaffUserId");
 
                     b.ToTable("EventStaff", "events");
+                });
+
+            modelBuilder.Entity("Events.Internal.Domain.EventStatistics", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("LastCalculatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TiersBreakdownJson")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<int>("TotalCheckedIn")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<decimal>("TotalRevenue")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(18)
+                        .HasColumnType("numeric(18,0)")
+                        .HasDefaultValue(0m);
+
+                    b.Property<int>("TotalTicketsSold")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventId")
+                        .IsUnique();
+
+                    b.ToTable("EventStatistics", "events");
                 });
 
             modelBuilder.Entity("Events.Internal.Domain.Venue", b =>
