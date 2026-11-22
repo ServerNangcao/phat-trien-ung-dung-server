@@ -1,4 +1,4 @@
-using Events.Internal.Domain;
+﻿using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Ticketing.SharedKernel;
@@ -60,9 +60,10 @@ internal sealed class ListEventsHandler(EventsDbContext db)
             .Include(e => e.Venue)
             .AsQueryable();
 
-        // Lọc theo Status (mặc định chỉ show OnSale nếu không truyền)
-        if (!string.IsNullOrWhiteSpace(query.Status))
-            q = q.Where(e => e.Status == query.Status);
+        // Lọc theo Status: Chỉ cho phép các trạng thái công khai (OnSale hoặc Ended)
+        // Ngăn chặn người dùng public truy vấn Draft, PendingApproval, Rejected
+        if (string.Equals(query.Status, EventStatus.Ended, StringComparison.OrdinalIgnoreCase))
+            q = q.Where(e => e.Status == EventStatus.Ended);
         else
             q = q.Where(e => e.Status == EventStatus.OnSale);
 

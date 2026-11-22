@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using CheckIn.Contracts;
 using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
@@ -40,8 +40,8 @@ internal sealed class GetEventAnalyticsHandler(
     IOrdersModuleApi ordersApi,
     ICheckInModuleApi checkInApi,
     ITicketingModuleApi ticketingApi,
-    IDistributedCache? cache,
-    ILogger<GetEventAnalyticsHandler> logger)
+    IDistributedCache? cache = null,
+    ILogger<GetEventAnalyticsHandler>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private const string CachePrefix = "analytics:events:";
@@ -53,11 +53,17 @@ internal sealed class GetEventAnalyticsHandler(
         bool isAdmin = false,
         CancellationToken cancellationToken = default)
     {
-        var @event = await db.Events.FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken);
-        if (@event is null)
+        var eventInfo = await db.Events
+            .AsNoTracking()
+            .Where(e => e.Id == eventId)
+            .Select(e => new { e.Id, e.OrganizerId, e.Title, e.Status })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (eventInfo is null)
             return Result.NotFound<OrganizerEventAnalyticsResponse>("Sự kiện không tồn tại.");
 
-        if (!isAdmin && organizerId.HasValue && @event.OrganizerId != organizerId.Value)
+        // Kiểm tra quyền theo cơ chế Fail-Closed: không phải Admin thì bắt buộc phải có organizerId hợp lệ trùng khớp
+        if (!isAdmin && (!organizerId.HasValue || eventInfo.OrganizerId != organizerId.Value))
             return Result.Forbidden<OrganizerEventAnalyticsResponse>("Bạn không có quyền truy cập dữ liệu phân tích của sự kiện này.");
 
         var cacheKey = $"{CachePrefix}{eventId}";
@@ -74,26 +80,74 @@ internal sealed class GetEventAnalyticsHandler(
                     if (cached is not null) return Result.Success(cached);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                logger.LogWarning(ex, "Lỗi khi đọc Redis cache báo cáo phân tích sự kiện {EventId}", eventId);
+                logger?.LogWarning(ex, "Lỗi khi đọc Redis cache báo cáo phân tích sự kiện {EventId}", eventId);
             }
         }
 
-        // 1. Gọi Orders module lấy doanh thu và số vé bán theo hạng
-        var orderRevenueTask = ordersApi.GetEventRevenueSummaryAsync(eventId, cancellationToken);
+        EventRevenueSummaryDto orderRevenue;
+        EventCheckInSummaryDto checkInSummary;
+        IReadOnlyList<TicketTypeSummaryDto> ticketTypes;
 
-        // 2. Gọi CheckIn module lấy số lượng người đã thực tế vào cổng
-        var checkInSummaryTask = checkInApi.GetEventCheckInSummaryAsync(eventId, cancellationToken);
+        try
+        {
+            // 1. Gọi Orders module lấy doanh thu và số vé bán theo hạng
+            var orderRevenueTask = ordersApi.GetEventRevenueSummaryAsync(eventId, cancellationToken);
 
-        // 3. Gọi Ticketing module lấy danh sách tất cả các hạng vé (sức chứa, giá, tồn kho)
-        var ticketTypesTask = ticketingApi.GetTicketTypesByEventIdAsync(eventId, cancellationToken);
+            // 2. Gọi CheckIn module lấy số lượng người đã thực tế vào cổng
+            var checkInSummaryTask = checkInApi.GetEventCheckInSummaryAsync(eventId, cancellationToken);
 
-        await Task.WhenAll(orderRevenueTask, checkInSummaryTask, ticketTypesTask);
+            // 3. Gọi Ticketing module lấy danh sách tất cả các hạng vé (sức chứa, giá, tồn kho)
+            var ticketTypesTask = ticketingApi.GetTicketTypesByEventIdAsync(eventId, cancellationToken);
 
-        var orderRevenue = await orderRevenueTask;
-        var checkInSummary = await checkInSummaryTask;
-        var ticketTypes = await ticketTypesTask;
+            await Task.WhenAll(orderRevenueTask, checkInSummaryTask, ticketTypesTask);
+
+            orderRevenue = await orderRevenueTask;
+            checkInSummary = await checkInSummaryTask;
+            ticketTypes = await ticketTypesTask;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger?.LogWarning(ex, "Gọi liên module thất bại cho sự kiện {EventId}, kích hoạt fallback từ EventStatistics", eventId);
+
+            var fallbackStats = await db.EventStatistics
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.EventId == eventId, cancellationToken);
+
+            if (fallbackStats is not null)
+            {
+                var fallbackTiers = new List<TicketTierAnalyticsItem>();
+                if (!string.IsNullOrWhiteSpace(fallbackStats.TiersBreakdownJson))
+                {
+                    try
+                    {
+                        fallbackTiers = JsonSerializer.Deserialize<List<TicketTierAnalyticsItem>>(fallbackStats.TiersBreakdownJson, JsonOptions) ?? [];
+                    }
+                    catch { }
+                }
+
+                var fallbackAttendanceRate = fallbackStats.TotalTicketsSold > 0
+                    ? Math.Min(100.0, Math.Round(((double)fallbackStats.TotalCheckedIn / fallbackStats.TotalTicketsSold) * 100, 2))
+                    : 0.0;
+
+                var fallbackResponse = new OrganizerEventAnalyticsResponse(
+                    EventId: eventId,
+                    EventTitle: eventInfo.Title,
+                    Status: eventInfo.Status,
+                    TotalRevenue: fallbackStats.TotalRevenue,
+                    TotalOrdersCount: 0,
+                    TotalTicketsSold: fallbackStats.TotalTicketsSold,
+                    CheckedInAttendees: fallbackStats.TotalCheckedIn,
+                    AttendanceRatePercentage: fallbackAttendanceRate,
+                    Tiers: fallbackTiers,
+                    CalculatedAt: fallbackStats.LastCalculatedAt);
+
+                return Result.Success(fallbackResponse);
+            }
+
+            throw;
+        }
 
         // Tổng hợp số vé bán theo từng hạng
         var tierSalesMap = orderRevenue.TicketTypesSales.ToDictionary(x => x.TicketTypeId);
@@ -119,10 +173,11 @@ internal sealed class GetEventAnalyticsHandler(
         {
             if (tiersBreakdown.All(t => t.TicketTypeId != extra.TicketTypeId))
             {
+                var estimatedPrice = extra.QuantitySold > 0 ? Math.Round(extra.TotalRevenue / extra.QuantitySold, 2) : 0m;
                 tiersBreakdown.Add(new TicketTierAnalyticsItem(
                     TicketTypeId: extra.TicketTypeId,
                     TierName: extra.TicketTypeName,
-                    Price: 0,
+                    Price: estimatedPrice,
                     TotalCapacity: extra.QuantitySold,
                     SoldCount: extra.QuantitySold,
                     QuantityAvailable: 0,
@@ -133,13 +188,13 @@ internal sealed class GetEventAnalyticsHandler(
         var totalSold = orderRevenue.TotalTicketsSold > 0 ? orderRevenue.TotalTicketsSold : tiersBreakdown.Sum(x => x.SoldCount);
         var totalCheckedIn = checkInSummary.TotalCheckedIn;
         var attendanceRate = totalSold > 0
-            ? Math.Round(((double)totalCheckedIn / totalSold) * 100, 2)
+            ? Math.Min(100.0, Math.Round(((double)totalCheckedIn / totalSold) * 100, 2))
             : 0.0;
 
         var response = new OrganizerEventAnalyticsResponse(
             EventId: eventId,
-            EventTitle: @event.Title,
-            Status: @event.Status,
+            EventTitle: eventInfo.Title,
+            Status: eventInfo.Status,
             TotalRevenue: orderRevenue.TotalRevenue,
             TotalOrdersCount: orderRevenue.TotalOrdersCount,
             TotalTicketsSold: totalSold,
@@ -173,7 +228,7 @@ internal sealed class GetEventAnalyticsHandler(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Lỗi khi lưu bảng EventStatistics cho sự kiện {EventId}", eventId);
+            logger?.LogWarning(ex, "Lỗi khi lưu bảng EventStatistics cho sự kiện {EventId}", eventId);
         }
 
         // Lưu vào Redis cache
@@ -189,7 +244,7 @@ internal sealed class GetEventAnalyticsHandler(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Lỗi khi lưu Redis cache báo cáo phân tích sự kiện {EventId}", eventId);
+                logger?.LogWarning(ex, "Lỗi khi lưu Redis cache báo cáo phân tích sự kiện {EventId}", eventId);
             }
         }
 

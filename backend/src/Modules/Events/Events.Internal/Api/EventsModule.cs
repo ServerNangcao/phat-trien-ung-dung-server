@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Amazon.S3;
 using Events.Internal.Features.Events.ChangeEventStatus;
 using Events.Internal.Features.Events.CreateEvent;
@@ -86,6 +86,9 @@ public static class EventsModule
         return services;
     }
 
+    private const string AdminRole = "Admin";
+    private const string OrganizerRole = "Organizer";
+
     public static IEndpointRouteBuilder MapEventsEndpoints(this IEndpointRouteBuilder app)
     {
         var events = app.MapGroup("/api/events").WithTags("Events");
@@ -109,7 +112,9 @@ public static class EventsModule
             int pageSize = 20,
             CancellationToken ct = default) =>
         {
-            var query = new ListEventsQuery(status, categoryId, city, minPrice, maxPrice, search, page, pageSize, category);
+            var clampedPage = Math.Max(1, page);
+            var clampedPageSize = Math.Clamp(pageSize, 1, 100);
+            var query = new ListEventsQuery(status, categoryId, city, minPrice, maxPrice, search, clampedPage, clampedPageSize, category);
             var result = await handler.HandleAsync(query, ct);
             return result.ToHttpResult();
         });
@@ -138,7 +143,7 @@ public static class EventsModule
             return result.ToHttpResult();
         });
 
-        // ── Events: Organizer (JWT Bearer required) ───────────────────
+        // ── Events: Organizer (JWT Bearer + Role required) ─────────────
 
         // GET /api/events/mine: Organizer xem tất cả sự kiện của mình (mọi trạng thái)
         events.MapGet("/mine", async (
@@ -156,7 +161,7 @@ public static class EventsModule
             var query = new ListOrganizerEventsQuery(organizerId, status, search, page, pageSize);
             var result = await handler.HandleAsync(query, ct);
             return result.ToHttpResult();
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // POST /api/events
         events.MapPost("/", async (
@@ -170,7 +175,7 @@ public static class EventsModule
 
             var result = await handler.HandleAsync(organizerId, request, ct);
             return result.ToHttpResult(201);
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // PUT /api/events/{id}
         events.MapPut("/{id:guid}", async (
@@ -185,7 +190,7 @@ public static class EventsModule
 
             var result = await handler.HandleAsync(id, organizerId, request, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // POST /api/events/{id}/submit
         events.MapPost("/{id:guid}/submit", async (
@@ -199,7 +204,7 @@ public static class EventsModule
 
             var result = await handler.SubmitForApprovalAsync(id, organizerId, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // POST /api/events/{id}/cancel: Hủy sự kiện (Organizer hoặc Admin)
         events.MapPost("/{id:guid}/cancel", async (
@@ -220,7 +225,7 @@ public static class EventsModule
 
             var result = await handler.CancelAsync(id, organizerId, isAdmin, body?.Reason, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // POST /api/events/{id}/cover-image/presign
         events.MapPost("/{id:guid}/cover-image/presign", async (
@@ -235,7 +240,7 @@ public static class EventsModule
 
             var result = await handler.HandleAsync(id, organizerId, body.ContentType, ct);
             return result.ToHttpResult();
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // POST /api/events/{id}/cover-image/confirm
         events.MapPost("/{id:guid}/cover-image/confirm", async (
@@ -250,7 +255,7 @@ public static class EventsModule
 
             var result = await handler.HandleAsync(id, organizerId, body.ObjectKey, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // ── Events: Admin (JWT Bearer + Role=Admin required) ──────────
 
@@ -262,7 +267,7 @@ public static class EventsModule
         {
             var result = await handler.ApproveAsync(id, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization(p => p.RequireRole("Admin"));
+        }).RequireAuthorization(p => p.RequireRole(AdminRole));
 
         // POST /api/events/{id}/reject
         events.MapPost("/{id:guid}/reject", async (
@@ -273,7 +278,7 @@ public static class EventsModule
         {
             var result = await handler.RejectAsync(id, body.Reason, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization(p => p.RequireRole("Admin"));
+        }).RequireAuthorization(p => p.RequireRole(AdminRole));
 
         // POST /api/events/{id}/end
         events.MapPost("/{id:guid}/end", async (
@@ -283,7 +288,7 @@ public static class EventsModule
         {
             var result = await handler.EndAsync(id, ct);
             return result.ToHttpResult(204);
-        }).RequireAuthorization(p => p.RequireRole("Admin"));
+        }).RequireAuthorization(p => p.RequireRole(AdminRole));
 
         // ── Categories ────────────────────────────────────────────────
 
@@ -300,7 +305,7 @@ public static class EventsModule
         {
             var result = await handler.CreateAsync(request, ct);
             return result.ToHttpResult(201);
-        });
+        }).RequireAuthorization(p => p.RequireRole(AdminRole));
 
         // ── Venues ────────────────────────────────────────────────────
 
@@ -320,7 +325,7 @@ public static class EventsModule
         {
             var result = await handler.CreateAsync(request, ct);
             return result.ToHttpResult(201);
-        });
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // ── Reports & Analytics ───────────────────────────────────────
 
@@ -333,24 +338,36 @@ public static class EventsModule
         {
             var isAdmin = IsAdmin(ctx);
             Guid? organizerId = null;
-            if (!isAdmin && TryGetOrganizerId(ctx, out var orgId))
+            if (!isAdmin)
             {
+                if (!TryGetOrganizerId(ctx, out var orgId))
+                    return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
                 organizerId = orgId;
             }
 
             var result = await handler.HandleAsync(id, organizerId, isAdmin, ct);
             return result.ToHttpResult();
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // GET /api/reports/events/organizer/{organizerId}
         reports.MapGet("/organizer/{organizerId:guid}", async (
             Guid organizerId,
             GetOrganizerReportHandler handler,
+            HttpContext ctx,
             CancellationToken ct) =>
         {
+            if (!IsAdmin(ctx))
+            {
+                if (!TryGetOrganizerId(ctx, out var currentUserId))
+                    return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
+
+                if (currentUserId != organizerId)
+                    return Results.Problem("Bạn không có quyền xem báo cáo của Organizer khác.", statusCode: 403);
+            }
+
             var result = await handler.HandleAsync(organizerId, ct);
             return result.ToHttpResult();
-        }).RequireAuthorization();
+        }).RequireAuthorization(p => p.RequireRole(OrganizerRole, AdminRole));
 
         // GET /api/reports/events/admin?from=...&to=...
         reports.MapGet("/admin", async (
@@ -361,7 +378,7 @@ public static class EventsModule
         {
             var result = await handler.HandleAsync(from, to, ct);
             return result.ToHttpResult();
-        }).RequireAuthorization(p => p.RequireRole("Admin"));
+        }).RequireAuthorization(p => p.RequireRole(AdminRole));
 
         return app;
     }
@@ -383,7 +400,7 @@ public static class EventsModule
 
     private static bool IsAdmin(HttpContext ctx)
     {
-        return ctx.User.IsInRole("Admin");
+        return ctx.User.IsInRole(AdminRole);
     }
 }
 

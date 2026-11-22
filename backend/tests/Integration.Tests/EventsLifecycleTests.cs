@@ -1,4 +1,4 @@
-using Events.Internal.Domain;
+﻿using Events.Internal.Domain;
 using Events.Internal.Features.Events.ChangeEventStatus;
 using Events.Internal.Features.Events.CreateEvent;
 using Events.Internal.Features.Events.UpdateEvent;
@@ -11,7 +11,7 @@ using Xunit;
 namespace Integration.Tests;
 
 /// <summary>
-/// Bước 4 — TV3: Kiểm thử vòng đời sự kiện theo state machine.
+/// Bước 4 — TV3: Kiểm thử toàn diện vòng đời sự kiện theo state machine:
 /// Draft → PendingApproval → OnSale | Rejected → Cancelled | Ended
 /// </summary>
 public class EventsLifecycleTests : IDisposable
@@ -37,7 +37,6 @@ public class EventsLifecycleTests : IDisposable
 
     public void Dispose()
     {
-        _db.Database.EnsureDeleted();
         _db.Dispose();
         _connection.Dispose();
         GC.SuppressFinalize(this);
@@ -49,6 +48,7 @@ public class EventsLifecycleTests : IDisposable
         var venue = Venue.Create(name, "Đường Lê Duẩn", "Hà Nội", 50_000);
         _db.Venues.Add(venue);
         await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
         return venue;
     }
 
@@ -67,10 +67,7 @@ public class EventsLifecycleTests : IDisposable
             endsAt: DateTime.UtcNow.AddDays(6));
     }
 
-    // ── Test 1 ──────────────────────────────────────────────────
-    /// <summary>
-    /// TC-LC-01: Tạo sự kiện qua CreateEventHandler → trạng thái phải là Draft.
-    /// </summary>
+    // ── TC-LC-01 ────────────────────────────────────────────────
     [Fact]
     public async Task CreateEvent_Sets_Status_To_Draft()
     {
@@ -90,19 +87,16 @@ public class EventsLifecycleTests : IDisposable
             EndsAt: DateTime.UtcNow.AddDays(11));
 
         var result = await handler.HandleAsync(organizerId, request);
-
         Assert.True(result.IsSuccess);
 
-        var saved = await _db.Events.FindAsync(result.Value);
+        _db.ChangeTracker.Clear();
+        var saved = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == result.Value);
         Assert.NotNull(saved);
         Assert.Equal(EventStatus.Draft, saved.Status);
         Assert.Equal(organizerId, saved.OrganizerId);
     }
 
-    // ── Test 2 ──────────────────────────────────────────────────
-    /// <summary>
-    /// TC-LC-02: UpdateEvent thành công khi Draft, trả Conflict khi OnSale.
-    /// </summary>
+    // ── TC-LC-02 ────────────────────────────────────────────────
     [Fact]
     public async Task UpdateEvent_InDraft_Succeeds_InOnSale_Fails()
     {
@@ -129,10 +123,17 @@ public class EventsLifecycleTests : IDisposable
         var draftResult = await updateHandler.HandleAsync(@event.Id, organizerId, req);
         Assert.True(draftResult.IsSuccess);
 
+        _db.ChangeTracker.Clear();
+        var updatedInDraft = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(updatedInDraft);
+        Assert.Equal("Tiêu đề đã sửa", updatedInDraft.Title);
+
         // Chuyển sang OnSale (Draft → PendingApproval → OnSale)
-        @event.SubmitForApproval();
-        @event.Approve();
-        await _db.SaveChangesAsync();
+        var statusHandler = new ChangeEventStatusHandler(_db);
+        await statusHandler.SubmitForApprovalAsync(@event.Id, organizerId);
+        await statusHandler.ApproveAsync(@event.Id);
+
+        _db.ChangeTracker.Clear();
 
         // Cập nhật khi OnSale → phải trả Conflict
         var onSaleResult = await updateHandler.HandleAsync(@event.Id, organizerId, req);
@@ -140,10 +141,7 @@ public class EventsLifecycleTests : IDisposable
         Assert.Equal(ErrorCodes.Conflict, onSaleResult.ErrorCode);
     }
 
-    // ── Test 3 ──────────────────────────────────────────────────
-    /// <summary>
-    /// TC-LC-03: SubmitForApproval → trạng thái chuyển sang PendingApproval.
-    /// </summary>
+    // ── TC-LC-03 ────────────────────────────────────────────────
     [Fact]
     public async Task SubmitForApproval_Changes_Status_To_PendingApproval()
     {
@@ -156,95 +154,101 @@ public class EventsLifecycleTests : IDisposable
 
         var handler = new ChangeEventStatusHandler(_db);
         var result = await handler.SubmitForApprovalAsync(@event.Id, organizerId);
-
         Assert.True(result.IsSuccess);
 
-        var updated = await _db.Events.FindAsync(@event.Id);
+        _db.ChangeTracker.Clear();
+        var updated = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
         Assert.NotNull(updated);
         Assert.Equal(EventStatus.PendingApproval, updated.Status);
     }
 
-    // ── Test 4 ──────────────────────────────────────────────────
-    /// <summary>
-    /// TC-LC-04a: Admin duyệt → OnSale.
-    /// TC-LC-04b: Admin từ chối → Rejected với lý do được lưu.
-    /// </summary>
+    // ── TC-LC-04a ───────────────────────────────────────────────
     [Fact]
-    public async Task Approve_Sets_OnSale_And_Reject_Sets_Rejected_With_Reason()
+    public async Task Approve_Sets_Status_To_OnSale()
     {
         var venue = await SeedVenueAsync("Cung Văn hóa Hữu Nghị");
         var organizerId = Guid.NewGuid();
         var handler = new ChangeEventStatusHandler(_db);
 
-        // --- 4a: Approve ---
-        var eventA = MakeEvent(organizerId, CategoryId, venue.Id, "approve");
-        eventA.SubmitForApproval();
-        _db.Events.Add(eventA);
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "approve");
+        @event.SubmitForApproval();
+        _db.Events.Add(@event);
         await _db.SaveChangesAsync();
 
-        var approveResult = await handler.ApproveAsync(eventA.Id);
+        var approveResult = await handler.ApproveAsync(@event.Id);
         Assert.True(approveResult.IsSuccess);
 
-        var approvedEvent = await _db.Events.FindAsync(eventA.Id);
+        _db.ChangeTracker.Clear();
+        var approvedEvent = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
         Assert.NotNull(approvedEvent);
         Assert.Equal(EventStatus.OnSale, approvedEvent.Status);
+    }
 
-        // --- 4b: Reject ---
-        var eventB = MakeEvent(organizerId, CategoryId, venue.Id, "reject");
-        eventB.SubmitForApproval();
-        _db.Events.Add(eventB);
+    // ── TC-LC-04b ───────────────────────────────────────────────
+    [Fact]
+    public async Task Reject_Sets_Status_To_Rejected_With_Reason()
+    {
+        var venue = await SeedVenueAsync("Nhà thi đấu Hoàng Mai");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "reject");
+        @event.SubmitForApproval();
+        _db.Events.Add(@event);
         await _db.SaveChangesAsync();
 
-        var rejectResult = await handler.RejectAsync(eventB.Id, "Nội dung vi phạm chính sách.");
+        var rejectResult = await handler.RejectAsync(@event.Id, "Nội dung vi phạm chính sách.");
         Assert.True(rejectResult.IsSuccess);
 
-        var rejectedEvent = await _db.Events.FindAsync(eventB.Id);
+        _db.ChangeTracker.Clear();
+        var rejectedEvent = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
         Assert.NotNull(rejectedEvent);
         Assert.Equal(EventStatus.Rejected, rejectedEvent.Status);
         Assert.Equal("Nội dung vi phạm chính sách.", rejectedEvent.RejectReason);
     }
 
-    // ── Test 5 ──────────────────────────────────────────────────
-    /// <summary>
-    /// TC-LC-05: Hủy sự kiện hợp lệ → Cancelled.
-    ///           Hủy sự kiện đã Ended → Conflict.
-    /// </summary>
+    // ── TC-LC-05a ───────────────────────────────────────────────
     [Fact]
-    public async Task CancelEvent_Succeeds_Blocks_On_Ended()
+    public async Task CancelEvent_InDraft_Succeeds()
     {
         var venue = await SeedVenueAsync("Phòng Hội thảo B");
         var organizerId = Guid.NewGuid();
         var handler = new ChangeEventStatusHandler(_db);
 
-        // --- Cancel hợp lệ (Draft → Cancel) ---
-        var eventToCancel = MakeEvent(organizerId, CategoryId, venue.Id, "cancel");
-        _db.Events.Add(eventToCancel);
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "cancel-draft");
+        _db.Events.Add(@event);
         await _db.SaveChangesAsync();
 
-        var cancelResult = await handler.CancelAsync(eventToCancel.Id, organizerId, isAdmin: false, reason: "Lý do hủy");
+        var cancelResult = await handler.CancelAsync(@event.Id, organizerId, isAdmin: false, reason: "Hủy từ nháp");
         Assert.True(cancelResult.IsSuccess);
 
-        var cancelledEvent = await _db.Events.FindAsync(eventToCancel.Id);
+        _db.ChangeTracker.Clear();
+        var cancelledEvent = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
         Assert.NotNull(cancelledEvent);
         Assert.Equal(EventStatus.Cancelled, cancelledEvent.Status);
+    }
 
-        // --- Cancel sự kiện đã Ended → Conflict ---
-        var eventToEnd = MakeEvent(organizerId, CategoryId, venue.Id, "end-then-cancel");
-        eventToEnd.SubmitForApproval();
-        eventToEnd.Approve();
-        eventToEnd.End();
-        _db.Events.Add(eventToEnd);
+    // ── TC-LC-05b ───────────────────────────────────────────────
+    [Fact]
+    public async Task CancelEvent_When_Ended_Returns_Conflict()
+    {
+        var venue = await SeedVenueAsync("Phòng Hội nghị Quốc tế");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "ended-cancel");
+        @event.SubmitForApproval();
+        @event.Approve();
+        @event.End();
+        _db.Events.Add(@event);
         await _db.SaveChangesAsync();
 
-        var failedCancel = await handler.CancelAsync(eventToEnd.Id, organizerId, isAdmin: false, reason: "Thử hủy");
+        var failedCancel = await handler.CancelAsync(@event.Id, organizerId, isAdmin: false, reason: "Thử hủy sự kiện đã kết thúc");
         Assert.False(failedCancel.IsSuccess);
         Assert.Equal(ErrorCodes.Conflict, failedCancel.ErrorCode);
     }
 
-    // ── Test 6 ──────────────────────────────────────────────────
-    /// <summary>
-    /// TC-LC-06: CancelAsync từ Organizer khác (không phải chủ sự kiện) + isAdmin=false → Forbidden.
-    /// </summary>
+    // ── TC-LC-06 ────────────────────────────────────────────────
     [Fact]
     public async Task CancelAsync_Forbids_Non_Owner_Without_Admin()
     {
@@ -257,16 +261,136 @@ public class EventsLifecycleTests : IDisposable
         await _db.SaveChangesAsync();
 
         var handler = new ChangeEventStatusHandler(_db);
-
-        // Người lạ cố hủy, không phải admin → Forbidden
         var result = await handler.CancelAsync(@event.Id, intruderId, isAdmin: false, reason: "Cố tình hủy");
 
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.Forbidden, result.ErrorCode);
 
-        // Xác nhận event vẫn ở Draft (không bị thay đổi)
-        var unchanged = await _db.Events.FindAsync(@event.Id);
+        _db.ChangeTracker.Clear();
+        var unchanged = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
         Assert.NotNull(unchanged);
         Assert.Equal(EventStatus.Draft, unchanged.Status);
+    }
+
+    // ── Bổ sung: EndEvent từ OnSale thành công ───────────────────
+    [Fact]
+    public async Task EndEvent_From_OnSale_Succeeds()
+    {
+        var venue = await SeedVenueAsync("Sân khấu Cầu Giấy");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "end-onsale");
+        @event.SubmitForApproval();
+        @event.Approve();
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var endResult = await handler.EndAsync(@event.Id);
+        Assert.True(endResult.IsSuccess);
+
+        _db.ChangeTracker.Clear();
+        var ended = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(ended);
+        Assert.Equal(EventStatus.Ended, ended.Status);
+    }
+
+    // ── Bổ sung: EndEvent từ Draft trả về Conflict ───────────────
+    [Fact]
+    public async Task EndEvent_From_Draft_Returns_Conflict()
+    {
+        var venue = await SeedVenueAsync("Sân khấu Đống Đa");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "end-draft");
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var endResult = await handler.EndAsync(@event.Id);
+        Assert.False(endResult.IsSuccess);
+        Assert.Equal(ErrorCodes.Conflict, endResult.ErrorCode);
+    }
+
+    // ── Bổ sung: CancelEvent khi đang OnSale thành công ──────────
+    [Fact]
+    public async Task CancelEvent_In_OnSale_Succeeds()
+    {
+        var venue = await SeedVenueAsync("Sân Quần Ngựa");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "cancel-onsale");
+        @event.SubmitForApproval();
+        @event.Approve();
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var cancelResult = await handler.CancelAsync(@event.Id, organizerId, isAdmin: false, reason: "Bão lớn hủy show");
+        Assert.True(cancelResult.IsSuccess);
+
+        _db.ChangeTracker.Clear();
+        var cancelled = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(cancelled);
+        Assert.Equal(EventStatus.Cancelled, cancelled.Status);
+        Assert.Equal("Bão lớn hủy show", cancelled.RejectReason);
+    }
+
+    // ── Bổ sung: CancelEvent bởi Admin trên sự kiện của người khác ─
+    [Fact]
+    public async Task CancelEvent_By_Admin_On_Others_Event_Succeeds()
+    {
+        var venue = await SeedVenueAsync("Sân Hàng Đẫy");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "admin-cancel");
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        // Admin hủy (không truyền organizerId hoặc truyền id khác)
+        var cancelResult = await handler.CancelAsync(@event.Id, organizerId: null, isAdmin: true, reason: "Vi phạm quy định nền tảng");
+        Assert.True(cancelResult.IsSuccess);
+
+        _db.ChangeTracker.Clear();
+        var cancelled = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(cancelled);
+        Assert.Equal(EventStatus.Cancelled, cancelled.Status);
+        Assert.Equal("Vi phạm quy định nền tảng", cancelled.RejectReason);
+    }
+
+    // ── Bổ sung: Chặn duyệt nhảy cóc từ Draft ────────────────────
+    [Fact]
+    public async Task ApproveEvent_From_Draft_Returns_Conflict()
+    {
+        var venue = await SeedVenueAsync("Nhà hát Tuổi Trẻ");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "approve-draft");
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var approveResult = await handler.ApproveAsync(@event.Id);
+        Assert.False(approveResult.IsSuccess);
+        Assert.Equal(ErrorCodes.Conflict, approveResult.ErrorCode);
+    }
+
+    // ── Bổ sung: Chặn non-owner nộp duyệt sự kiện ─────────────────
+    [Fact]
+    public async Task SubmitForApproval_By_NonOwner_Returns_Forbidden()
+    {
+        var venue = await SeedVenueAsync("Trung tâm Triển lãm");
+        var ownerId = Guid.NewGuid();
+        var otherUser = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db);
+
+        var @event = MakeEvent(ownerId, CategoryId, venue.Id, "submit-nonowner");
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var result = await handler.SubmitForApprovalAsync(@event.Id, otherUser);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.Forbidden, result.ErrorCode);
     }
 }
