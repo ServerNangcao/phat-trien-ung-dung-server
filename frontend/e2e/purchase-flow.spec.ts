@@ -16,9 +16,33 @@ test("customer discovers an event, reserves tickets, completes checkout and open
 
   await expect(page.getByRole("heading", { name: /Một trải nghiệm hay/ })).toBeVisible();
   await page.getByRole("link", { name: /Mở vé của tôi/ }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page).toHaveURL(/\/my-tickets$/);
   await expect(page.getByRole("heading", { name: "Vé của bạn." })).toBeVisible();
   await expect(page.locator(".digital-ticket-qr svg")).toBeVisible();
   await expect(page.getByText(/DEMO-/)).toBeVisible();
+});
+
+test("my-tickets route requires auth, hides nav link when logged out, and redirects on logout (TC-01, TC-02, TC-03)", async ({ page }) => {
+  // TC-03: Chưa đăng nhập -> nút "Vé của tôi" ẩn trên thanh menu
+  await page.goto("/");
+  await expect(page.locator(".site-header").getByRole("link", { name: "Vé của tôi" })).toHaveCount(0);
+
+  // TC-02: Truy cập vãng lai thẳng vào /my-tickets -> bị chặn và chuyển hướng về /login
+  await page.goto("/my-tickets");
+  await expect(page).toHaveURL(/\/login$/);
+
+  // Đăng nhập xong tự động quay lại /my-tickets (Nhiệm vụ 3)
+  await page.getByRole("button", { name: "Tiếp tục" }).click();
+  await expect(page).toHaveURL(/\/my-tickets$/);
+  await expect(page.locator(".site-header").getByRole("link", { name: "Vé của tôi" })).toBeVisible();
+
+  // TC-01: Đang ở /my-tickets bấm "Đăng xuất" -> ngay lập tức chuyển hướng về /login
+  await page.locator(".site-header").getByRole("button", { name: "Đăng xuất" }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Vé của bạn." })).toHaveCount(0);
+  await expect(page.locator(".site-header").getByRole("link", { name: "Vé của tôi" })).toHaveCount(0);
 });
 
 test("event catalog filters by city and category", async ({ page }) => {

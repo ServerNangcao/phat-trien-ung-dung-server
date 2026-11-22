@@ -16,6 +16,11 @@ internal sealed class Reservation : BaseEntity<Guid>
     /// </summary>
     public Guid EventId { get; private set; }
 
+    /// <summary>
+    /// Khóa chống trùng lặp yêu cầu đặt vé (Idempotency Key).
+    /// </summary>
+    public string? IdempotencyKey { get; private set; }
+
     public string Status { get; private set; } = ReservationStatus.Active;
     public DateTime ExpiresAt { get; private set; }
 
@@ -26,11 +31,13 @@ internal sealed class Reservation : BaseEntity<Guid>
     public static Reservation Create(
         Guid customerId,
         Guid eventId,
-        DateTime expiresAt) => new()
+        DateTime expiresAt,
+        string? idempotencyKey = null) => new()
     {
         Id = Guid.CreateVersion7(),
         CustomerId = customerId,
         EventId = eventId,
+        IdempotencyKey = idempotencyKey,
         Status = ReservationStatus.Active,
         ExpiresAt = expiresAt,
         CreatedAt = DateTime.UtcNow
@@ -59,4 +66,3 @@ internal sealed class Reservation : BaseEntity<Guid>
         UpdatedAt = DateTime.UtcNow;
     }
 }
-

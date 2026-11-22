@@ -2,12 +2,14 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using FluentValidation;
+using Identity.Internal.Api;
 using Identity.Internal.Application.DTOs;
 using Identity.Internal.Application.Services;
 using Identity.Internal.Application.Validators;
 using Identity.Internal.Domain;
 using Identity.Internal.Infrastructure;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -82,6 +84,62 @@ public class IdentityTests
     {
         var validator = new LoginRequestValidator();
         var request = new LoginRequest(Email: email, Password: password);
+
+        var result = validator.Validate(request);
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void ForgotPasswordRequestValidator_ValidRequest_PassesValidation()
+    {
+        var validator = new ForgotPasswordRequestValidator();
+        var request = new ForgotPasswordRequest(Email: "user@example.com");
+
+        var result = validator.Validate(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("invalid-email")]
+    [InlineData("   ")]
+    public void ForgotPasswordRequestValidator_InvalidEmail_FailsValidation(string email)
+    {
+        var validator = new ForgotPasswordRequestValidator();
+        var request = new ForgotPasswordRequest(Email: email);
+
+        var result = validator.Validate(request);
+
+        Assert.False(result.IsValid);
+    }
+
+    [Fact]
+    public void ResetPasswordRequestValidator_ValidRequest_PassesValidation()
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var request = new ResetPasswordRequest(
+            Email: "user@example.com",
+            Token: "CfDJ8Abc123Token",
+            NewPassword: "NewSecurePassword123!");
+
+        var result = validator.Validate(request);
+
+        Assert.True(result.IsValid);
+    }
+
+    [Theory]
+    [InlineData("", "token", "NewSecurePassword123!")]
+    [InlineData("invalid-email", "token", "NewSecurePassword123!")]
+    [InlineData("user@example.com", "", "NewSecurePassword123!")]
+    [InlineData("user@example.com", "token", "short")]
+    [InlineData("user@example.com", "token", "")]
+    public void ResetPasswordRequestValidator_InvalidRequest_FailsValidation(
+        string email, string token, string newPassword)
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var request = new ResetPasswordRequest(Email: email, Token: token, NewPassword: newPassword);
 
         var result = validator.Validate(request);
 
@@ -293,6 +351,95 @@ public class IdentityTests
         Assert.NotEqual(rawRefreshToken, storedToken.TokenHash); // Không được lưu raw token!
         Assert.False(storedToken.IsRevoked);
         Assert.True(storedToken.ExpiresAt > DateTime.UtcNow);
+    }
+
+    // ───────────────────────────────────────────────
+    // 6. RegisterAsync Conflict (409) & Race Condition Tests
+    // ───────────────────────────────────────────────
+    [Fact]
+    public async Task RegisterAsync_WhenEmailAlreadyExists_ReturnsConflict409()
+    {
+        var validator = new RegisterRequestValidator();
+        var request = new RegisterRequest("existing@example.com", "Existing User", "SecurePassword123!", PhoneNumber: null);
+        var existingUser = ApplicationUser.Create("existing@example.com", "Existing User");
+        var userManager = new RegisterTestUserManager(existingUser: existingUser);
+
+        var result = await IdentityEndpoints.RegisterAsync(request, validator, userManager, null!);
+
+        var statusCodeResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, statusCodeResult.StatusCode);
+
+        var problemResult = Assert.IsType<ProblemHttpResult>(result);
+        Assert.Equal("Email này đã được sử dụng.", problemResult.ProblemDetails.Detail);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenConcurrentRaceConditionDuplicateError_ReturnsConflict409()
+    {
+        var validator = new RegisterRequestValidator();
+        var request = new RegisterRequest("race@example.com", "Race User", "SecurePassword123!", PhoneNumber: null);
+        var duplicateError = IdentityResult.Failed(new IdentityError { Code = "DuplicateEmail", Description = "Email is taken." });
+        var userManager = new RegisterTestUserManager(existingUser: null, createResult: duplicateError);
+
+        var result = await IdentityEndpoints.RegisterAsync(request, validator, userManager, null!);
+
+        var statusCodeResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, statusCodeResult.StatusCode);
+
+        var problemResult = Assert.IsType<ProblemHttpResult>(result);
+        Assert.Equal("Email này đã được sử dụng.", problemResult.ProblemDetails.Detail);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenConcurrentRaceConditionDbUpdateException_ReturnsConflict409()
+    {
+        var validator = new RegisterRequestValidator();
+        var request = new RegisterRequest("race@example.com", "Race User", "SecurePassword123!", PhoneNumber: null);
+        var userManager = new RegisterTestUserManager(existingUser: null, throwDbUpdateOnCreate: true);
+
+        var result = await IdentityEndpoints.RegisterAsync(request, validator, userManager, null!);
+
+        var statusCodeResult = Assert.IsAssignableFrom<IStatusCodeHttpResult>(result);
+        Assert.Equal(StatusCodes.Status409Conflict, statusCodeResult.StatusCode);
+
+        var problemResult = Assert.IsType<ProblemHttpResult>(result);
+        Assert.Equal("Email này đã được sử dụng.", problemResult.ProblemDetails.Detail);
+    }
+
+    private sealed class RegisterTestUserManager : UserManager<ApplicationUser>
+    {
+        private readonly ApplicationUser? _existingUser;
+        private readonly IdentityResult _createResult;
+        private readonly bool _throwDbUpdateOnCreate;
+
+        public RegisterTestUserManager(
+            ApplicationUser? existingUser = null,
+            IdentityResult? createResult = null,
+            bool throwDbUpdateOnCreate = false)
+            : base(new TestUserStore(), null!, null!, null!, null!, null!, null!, null!, null!)
+        {
+            _existingUser = existingUser;
+            _createResult = createResult ?? IdentityResult.Success;
+            _throwDbUpdateOnCreate = throwDbUpdateOnCreate;
+        }
+
+        public override Task<ApplicationUser?> FindByEmailAsync(string email) =>
+            Task.FromResult(_existingUser);
+
+        public override Task<IdentityResult> CreateAsync(ApplicationUser user, string password)
+        {
+            if (_throwDbUpdateOnCreate)
+            {
+                throw new DbUpdateException("Duplicate key violation", (Exception?)null);
+            }
+            return Task.FromResult(_createResult);
+        }
+
+        public override Task<IdentityResult> AddToRoleAsync(ApplicationUser user, string role) =>
+            Task.FromResult(IdentityResult.Success);
+
+        public override Task<IList<string>> GetRolesAsync(ApplicationUser user) =>
+            Task.FromResult<IList<string>>(["Customer"]);
     }
 
     private sealed class TestUserManager : UserManager<ApplicationUser>

@@ -34,4 +34,12 @@ internal sealed class ApplicationUser : IdentityUser<Guid>
         FullName = fullName;
         PhoneNumber = phoneNumber;
     }
+
+    /// <summary>
+    /// Khóa hoặc mở khóa tài khoản (Admin dùng).
+    /// </summary>
+    public void SetActive(bool isActive)
+    {
+        IsActive = isActive;
+    }
 }

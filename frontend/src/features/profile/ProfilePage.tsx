@@ -1,0 +1,474 @@
+import { useState, useEffect, type FormEvent } from "react";
+import { Check, Lock, ReceiptText, ShieldCheck, User } from "lucide-react";
+import { isDemoMode } from "../../api/client";
+import { ticketingApi } from "../../api/service";
+import type { UserProfile } from "../../api/types";
+import { StatusBadge } from "../../components/ui/StatusBadge";
+import { useSession } from "../auth/hooks/use-session";
+
+type ProfileTab = "info" | "vat" | "security";
+
+const inputClass =
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
+const labelClass = "block text-xs font-semibold text-[#526066] mb-1.5";
+
+function getInitialProfile(name?: string, email?: string): UserProfile {
+  const userKey = email || name || "me";
+  const storageKey = `ticketing.profile.${userKey.toLowerCase()}`;
+  const stored = localStorage.getItem(storageKey);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored) as UserProfile;
+      return {
+        ...parsed,
+        fullName: parsed.fullName || name || "",
+        email: email || parsed.email || "",
+      };
+    } catch {
+      // fallback
+    }
+  }
+
+  return {
+    fullName: name || "",
+    email: email || "",
+    phone: "",
+    dob: "",
+    gender: "Nam",
+    idNumber: "",
+    city: "",
+    district: "",
+    address: "",
+    taxCompany: "",
+    taxCode: "",
+    taxAddress: "",
+    taxEmail: "",
+    twoFactorEnabled: false,
+  };
+}
+
+export function ProfilePage() {
+  const { user } = useSession();
+  const storageKey = `ticketing.profile.${(user?.email || user?.name || "me").toLowerCase()}`;
+
+  const [tab, setTab] = useState<ProfileTab>("info");
+  const [profile, setProfile] = useState<UserProfile>(() =>
+    getInitialProfile(user?.name, user?.email)
+  );
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [savedNotice, setSavedNotice] = useState("");
+  const [passwordForm, setPasswordForm] = useState({ current: "", next: "", confirm: "" });
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordLoading, setPasswordLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (!isDemoMode && localStorage.getItem("ticketing.accessToken")) {
+      ticketingApi.auth
+        .profile()
+        .then((data) => {
+          if (!isMounted) return;
+          setProfile((prev) => ({
+            ...prev,
+            fullName: data.fullName || prev.fullName,
+            email: data.email || prev.email,
+            phone: data.phoneNumber || prev.phone,
+          }));
+        })
+        .catch(() => {
+          // fallback
+        });
+    } else if (user) {
+      setProfile((prev) => ({
+        ...prev,
+        fullName: prev.fullName || user.name || "",
+        email: user.email || prev.email || "",
+      }));
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  const notify = (msg: string) => {
+    setSavedNotice(msg);
+    window.setTimeout(() => setSavedNotice(""), 3000);
+  };
+
+  const handleSaveProfile = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaveLoading(true);
+    try {
+      if (!isDemoMode && localStorage.getItem("ticketing.accessToken")) {
+        await ticketingApi.auth.updateProfile({
+          fullName: profile.fullName,
+          phoneNumber: profile.phone,
+        });
+      }
+
+      localStorage.setItem(storageKey, JSON.stringify(profile));
+
+      // Cập nhật lại session lưu trong localStorage để Header cập nhật tên mới ngay
+      const savedUserStr = localStorage.getItem("ticketing.user");
+      if (savedUserStr) {
+        try {
+          const parsed = JSON.parse(savedUserStr);
+          parsed.name = profile.fullName;
+          if (profile.email) parsed.email = profile.email;
+          localStorage.setItem("ticketing.user", JSON.stringify(parsed));
+          window.dispatchEvent(new Event("ticketing:session-updated"));
+        } catch {
+          // ignore
+        }
+      }
+
+      notify(tab === "vat" ? "Đã lưu thông tin xuất hóa đơn VAT." : "Đã cập nhật hồ sơ cá nhân.");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; detail?: string } }; message?: string };
+      notify(axiosErr.response?.data?.message || axiosErr.response?.data?.detail || "Lưu hồ sơ thất bại.");
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  const handleToggle2FA = () => {
+    const updated = { ...profile, twoFactorEnabled: !profile.twoFactorEnabled };
+    setProfile(updated);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+    notify(updated.twoFactorEnabled ? "Đã bật xác thực 2 lớp (2FA)." : "Đã tắt xác thực 2 lớp (2FA).");
+  };
+
+  const handlePasswordSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (passwordForm.next.length < 8) {
+      setPasswordError("Mật khẩu mới cần tối thiểu 8 ký tự.");
+      return;
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      setPasswordError("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+    setPasswordError("");
+    setPasswordLoading(true);
+
+    try {
+      if (!isDemoMode) {
+        await ticketingApi.auth.changePassword(passwordForm.current, passwordForm.next);
+      }
+      setPasswordForm({ current: "", next: "", confirm: "" });
+      notify("Đã đổi mật khẩu thành công.");
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string; detail?: string } }; message?: string };
+      const msg =
+        axiosErr.response?.data?.message ||
+        axiosErr.response?.data?.detail ||
+        axiosErr.message ||
+        "Đổi mật khẩu thất bại.";
+      setPasswordError(msg);
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  return (
+    <div className="mx-auto max-w-5xl px-5 py-8 lg:px-8">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="eyebrow muted-eyebrow">TÀI KHOẢN CÁ NHÂN</div>
+          <h1 className="section-title">
+            Hồ sơ &amp; <em>bảo mật.</em>
+          </h1>
+        </div>
+        {savedNotice && (
+          <div
+            role="status"
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-[#182226] shadow-sm"
+          >
+            <Check size={15} className="text-emerald-600" />
+            {savedNotice}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <aside className="lg:col-span-4 space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 text-[#182226]">
+            <div className="flex items-center gap-3.5">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F05B45]/15 text-lg font-extrabold text-[#F05B45]">
+                {(profile.fullName || user?.name || "U").trim().charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate font-bold text-[#182226]">{profile.fullName || user?.name || "Người dùng"}</p>
+                <p className="truncate text-xs text-[#526066]">{profile.email || user?.email || "Chưa cập nhật email"}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex items-center justify-between border-t border-slate-200 pt-3.5 text-xs">
+              <span className="text-[#526066]">Bảo mật 2FA</span>
+              <StatusBadge tone={profile.twoFactorEnabled ? "success" : "warning"}>
+                {profile.twoFactorEnabled ? "Đang bật" : "Chưa bật"}
+              </StatusBadge>
+            </div>
+          </div>
+
+          <nav aria-label="Danh mục hồ sơ" className="rounded-2xl border border-white/15 bg-[#22B56B] p-2 space-y-1">
+            {[
+              { id: "info" as const, label: "Thông tin cá nhân", icon: User },
+              { id: "vat" as const, label: "Xuất hóa đơn VAT", icon: ReceiptText },
+              { id: "security" as const, label: "Bảo mật & 2FA", icon: ShieldCheck },
+            ].map((item) => {
+              const Icon = item.icon;
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setTab(item.id)}
+                  className={`flex w-full items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-left text-sm font-semibold transition-colors cursor-pointer ${
+                    active
+                      ? "bg-white text-[#166534] shadow-sm"
+                      : "text-white/90 hover:bg-white/15 hover:text-white"
+                  }`}
+                >
+                  <Icon size={16} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <section className="lg:col-span-8 rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 text-[#182226]">
+          {tab === "info" && (
+            <form onSubmit={handleSaveProfile} className="space-y-5">
+              <h2 className="text-lg font-extrabold text-[#182226]">Thông tin cá nhân</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="pf-name" className={labelClass}>Họ và tên</label>
+                  <input
+                    id="pf-name"
+                    className={inputClass}
+                    value={profile.fullName}
+                    onChange={(e) => setProfile({ ...profile, fullName: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-email" className={labelClass}>
+                    Email <span className="font-normal text-slate-400">(Tài khoản đăng nhập)</span>
+                  </label>
+                  <input
+                    id="pf-email"
+                    type="email"
+                    className={`${inputClass} bg-slate-50 cursor-not-allowed text-slate-600`}
+                    value={profile.email}
+                    disabled
+                    title="Email gắn liền với tài khoản đăng nhập"
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-phone" className={labelClass}>Số điện thoại</label>
+                  <input
+                    id="pf-phone"
+                    className={inputClass}
+                    value={profile.phone}
+                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-dob" className={labelClass}>Ngày sinh</label>
+                  <input
+                    id="pf-dob"
+                    type="date"
+                    className={inputClass}
+                    value={profile.dob}
+                    onChange={(e) => setProfile({ ...profile, dob: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-gender" className={labelClass}>Giới tính</label>
+                  <select
+                    id="pf-gender"
+                    className={inputClass}
+                    value={profile.gender}
+                    onChange={(e) => setProfile({ ...profile, gender: e.target.value as UserProfile["gender"] })}
+                  >
+                    <option value="Nữ">Nữ</option>
+                    <option value="Nam">Nam</option>
+                    <option value="Khác">Khác</option>
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="pf-cccd" className={labelClass}>CCCD / Hộ chiếu</label>
+                  <input
+                    id="pf-cccd"
+                    className={inputClass}
+                    value={profile.idNumber}
+                    onChange={(e) => setProfile({ ...profile, idNumber: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-city" className={labelClass}>Tỉnh / Thành phố</label>
+                  <input
+                    id="pf-city"
+                    className={inputClass}
+                    value={profile.city}
+                    onChange={(e) => setProfile({ ...profile, city: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pf-district" className={labelClass}>Quận / Huyện</label>
+                  <input
+                    id="pf-district"
+                    className={inputClass}
+                    value={profile.district}
+                    onChange={(e) => setProfile({ ...profile, district: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="pf-address" className={labelClass}>Địa chỉ chi tiết</label>
+                <input
+                  id="pf-address"
+                  className={inputClass}
+                  value={profile.address}
+                  onChange={(e) => setProfile({ ...profile, address: e.target.value })}
+                />
+              </div>
+              <div className="pt-2">
+                <button type="submit" disabled={saveLoading} className="btn-primary">
+                  {saveLoading ? "Đang lưu..." : "Lưu thay đổi"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {tab === "vat" && (
+            <form onSubmit={handleSaveProfile} className="space-y-5">
+              <div>
+                <h2 className="text-lg font-extrabold text-[#182226]">Thông tin xuất hóa đơn VAT</h2>
+                <p className="mt-1 text-xs text-[#526066]">
+                  Dùng cho đơn hàng doanh nghiệp khi thanh toán vé sự kiện.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label htmlFor="vat-company" className={labelClass}>Tên công ty / Tổ chức</label>
+                  <input
+                    id="vat-company"
+                    className={inputClass}
+                    value={profile.taxCompany}
+                    onChange={(e) => setProfile({ ...profile, taxCompany: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vat-code" className={labelClass}>Mã số thuế</label>
+                  <input
+                    id="vat-code"
+                    className={inputClass}
+                    value={profile.taxCode}
+                    onChange={(e) => setProfile({ ...profile, taxCode: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="vat-email" className={labelClass}>Email nhận hóa đơn</label>
+                  <input
+                    id="vat-email"
+                    type="email"
+                    className={inputClass}
+                    value={profile.taxEmail}
+                    onChange={(e) => setProfile({ ...profile, taxEmail: e.target.value })}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label htmlFor="vat-addr" className={labelClass}>Địa chỉ đăng ký kinh doanh</label>
+                  <input
+                    id="vat-addr"
+                    className={inputClass}
+                    value={profile.taxAddress}
+                    onChange={(e) => setProfile({ ...profile, taxAddress: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="pt-2">
+                <button type="submit" disabled={saveLoading} className="btn-primary">
+                  {saveLoading ? "Đang lưu..." : "Lưu thông tin VAT"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {tab === "security" && (
+            <div className="space-y-8">
+              <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 font-bold text-[#182226]">
+                    <ShieldCheck size={18} className="text-[#F05B45]" />
+                    <span>Xác thực hai lớp (2FA)</span>
+                  </div>
+                  <p className="text-xs text-[#526066]">
+                    Bảo vệ tài khoản bằng mã OTP khi đăng nhập từ thiết bị lạ.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggle2FA}
+                  className={profile.twoFactorEnabled ? "btn-outline" : "btn-primary"}
+                >
+                  {profile.twoFactorEnabled ? "Tắt 2FA" : "Bật 2FA"}
+                </button>
+              </div>
+
+              <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                <div className="flex items-center gap-2 font-bold text-[#182226]">
+                  <Lock size={17} className="text-[#526066]" />
+                  <span>Đổi mật khẩu</span>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <div>
+                    <label htmlFor="pw-cur" className={labelClass}>Mật khẩu hiện tại</label>
+                    <input
+                      id="pw-cur"
+                      type="password"
+                      className={inputClass}
+                      value={passwordForm.current}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, current: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="pw-new" className={labelClass}>Mật khẩu mới</label>
+                    <input
+                      id="pw-new"
+                      type="password"
+                      className={inputClass}
+                      value={passwordForm.next}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, next: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="pw-cfm" className={labelClass}>Xác nhận mật khẩu</label>
+                    <input
+                      id="pw-cfm"
+                      type="password"
+                      className={inputClass}
+                      value={passwordForm.confirm}
+                      onChange={(e) => setPasswordForm({ ...passwordForm, confirm: e.target.value })}
+                      required
+                    />
+                  </div>
+                </div>
+                {passwordError && <p className="text-xs font-semibold text-rose-600">{passwordError}</p>}
+                <button type="submit" disabled={passwordLoading} className="btn-primary">
+                  {passwordLoading ? "Đang cập nhật..." : "Cập nhật mật khẩu"}
+                </button>
+              </form>
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

@@ -8,9 +8,14 @@ import { PageLoading } from "../../../components/common/PageLoading";
 import { DigitalTicketCard } from "../components/DigitalTicketCard";
 
 export function MyTicketsPage() {
+  const hasToken = Boolean(
+    localStorage.getItem("ticketing.accessToken") || localStorage.getItem("ticketing.user"),
+  );
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ["tickets"],
     queryFn: ticketingApi.tickets,
+    enabled: hasToken,
   });
 
   const [filter, setFilter] = useState<"all" | "valid" | "used">("all");

@@ -31,18 +31,26 @@ export function CheckoutPage() {
   const queryClient = useQueryClient();
 
   const [reservation] = useState<Reservation | null>(() => {
-    const saved = sessionStorage.getItem("ticketing.reservation");
-    return saved ? (JSON.parse(saved) as Reservation) : null;
+    try {
+      const saved = sessionStorage.getItem("ticketing.reservation");
+      return saved ? (JSON.parse(saved) as Reservation) : null;
+    } catch {
+      sessionStorage.removeItem("ticketing.reservation");
+      return null;
+    }
   });
 
   const [seconds, setSeconds] = useState(() =>
     reservation ? Math.max(0, Math.ceil((reservation.expiresAt - Date.now()) / 1000)) : 0,
   );
 
+  const isMatchingEvent =
+    !!reservation && (reservation.eventId === id || reservation.eventSlug === id);
+
   const eventQuery = useQuery({
     queryKey: ["event", id],
     queryFn: () => ticketingApi.event(id),
-    enabled: !!reservation && reservation.eventId === id,
+    enabled: isMatchingEvent,
   });
 
   const {
@@ -73,13 +81,14 @@ export function CheckoutPage() {
       });
     },
     onSuccess: async (result) => {
+      sessionStorage.removeItem("ticketing.reservation");
       await queryClient.invalidateQueries({ queryKey: ["tickets"] });
       if (isDemoMode) navigate(result.paymentUrl);
       else window.location.assign(result.paymentUrl);
     },
   });
 
-  if (!reservation || reservation.eventId !== id) {
+  if (!isMatchingEvent) {
     return (
       <div className="checkout-empty">
         <Ticket size={32} />

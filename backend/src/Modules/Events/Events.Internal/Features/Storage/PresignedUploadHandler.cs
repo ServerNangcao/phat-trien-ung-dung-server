@@ -1,4 +1,5 @@
 using Events.Internal.Infrastructure;
+using Events.Internal.Infrastructure.Caching;
 using Events.Internal.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Ticketing.SharedKernel;
@@ -6,7 +7,7 @@ using Ticketing.SharedKernel;
 namespace Events.Internal.Features.Storage;
 
 /// <summary>
-/// Handler tạo Presigned URL để client upload ảnh bìa trực tiếp lên Cloudflare R2.
+/// Handler tạo Presigned URL để client upload ảnh bìa trực tiếp lên Cloudflare R2 / MinIO.
 /// Flow:
 ///   1. Client gọi API → nhận presigned PUT URL + object key
 ///   2. Client PUT file thẳng lên R2 (không qua server)
@@ -66,9 +67,9 @@ internal sealed class GetUploadPresignedUrlHandler(
 }
 
 /// <summary>
-/// Handler xác nhận upload thành công — lưu object key vào Event.
+/// Handler xác nhận upload thành công — lưu object key vào Event và xóa cache.
 /// </summary>
-internal sealed class ConfirmCoverImageUploadHandler(EventsDbContext db)
+internal sealed class ConfirmCoverImageUploadHandler(EventsDbContext db, IEventsCacheService? cache = null)
 {
     public async Task<Result> HandleAsync(
         Guid eventId,
@@ -94,6 +95,10 @@ internal sealed class ConfirmCoverImageUploadHandler(EventsDbContext db)
 
         @event.SetCoverImage(objectKey);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (cache is not null)
+            await cache.InvalidateEventAsync(@event.Id, @event.Slug, cancellationToken);
+
         return Result.Success();
     }
 }

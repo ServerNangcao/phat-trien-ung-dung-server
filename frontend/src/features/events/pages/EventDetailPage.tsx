@@ -30,7 +30,7 @@ const formatDate = (date?: string) => {
   }).format(d);
 };
 
-const DEFAULT_COVER = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85";
+const DEFAULT_COVER = "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg";
 
 export function EventDetailPage() {
   const { id = "" } = useParams();
@@ -45,12 +45,16 @@ export function EventDetailPage() {
 
   const reserveMutation = useMutation({
     mutationFn: () => {
-      const tierId = selectedTier || eventQuery.data?.tiers[0]?.id;
-      if (!tierId) throw new Error("Sự kiện chưa có hạng vé để đặt.");
-      return ticketingApi.reserve(id, tierId, quantity);
+      const eventData = eventQuery.data;
+      const tierId = selectedTier || eventData?.tiers[0]?.id;
+      if (!eventData || !tierId) throw new Error("Sự kiện chưa có hạng vé để đặt.");
+      return ticketingApi.reserve(eventData.rawId || eventData.id, tierId, quantity);
     },
     onSuccess: (reservation) => {
-      sessionStorage.setItem("ticketing.reservation", JSON.stringify(reservation));
+      sessionStorage.setItem(
+        "ticketing.reservation",
+        JSON.stringify({ ...reservation, eventSlug: id }),
+      );
       navigate(`/checkout/${id}`);
     },
   });

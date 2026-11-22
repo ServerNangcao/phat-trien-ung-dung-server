@@ -1,6 +1,8 @@
 import { apiClient, isDemoMode } from "./client";
 import { demoApi } from "./demo";
+import { platformDemoApi } from "./platformDemo";
 import type {
+  AdminUserItem,
   AuthResponse,
   CheckInStatus,
   CheckoutInput,
@@ -11,13 +13,14 @@ import type {
   Reservation,
   TicketTier,
   UserProfileResponse,
+  UserRole,
 } from "./types";
 
 const DEFAULT_IMAGES = [
-  "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85",
-  "https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&w=900&q=80",
-  "https://images.unsplash.com/photo-1565193566173-7a0ee3dbe261?auto=format&fit=crop&w=900&q=80",
+  "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg",
+  "https://cdn.sukienbanve.id.vn/the-sound-of-spring.jpg",
+  "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
+  "https://cdn.sukienbanve.id.vn/ceramic-sunday.jpg",
 ];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,6 +72,7 @@ function normalizeEvent(raw: any): EventItem {
 
   return {
     id: String(raw.slug || raw.id || ""),
+    rawId: raw.id ? String(raw.id) : undefined,
     title: raw.title || "Sự kiện",
     category: (raw.categoryName || raw.category?.name || raw.category || "Âm nhạc") as EventItem["category"],
     location: raw.venueCity || raw.venue?.city || raw.location || "TP. Hồ Chí Minh",
@@ -98,6 +102,10 @@ export const ticketingApi = {
       const { data } = await apiClient.get<UserProfileResponse>("/api/identity/me");
       return data;
     },
+    updateProfile: async (input: { fullName: string; phoneNumber?: string }) => {
+      const { data } = await apiClient.put<UserProfileResponse>("/api/identity/me", input);
+      return data;
+    },
     changePassword: async (currentPassword: string, newPassword: string) => {
       await apiClient.post("/api/identity/change-password", { currentPassword, newPassword });
     },
@@ -109,6 +117,7 @@ export const ticketingApi = {
       pageSize: filters.limit ?? 20,
     };
     if (filters.query) params.search = filters.query;
+    if (filters.category && filters.category !== "Tất cả") params.category = filters.category;
     if (filters.location && filters.location !== "Tất cả địa điểm") params.city = filters.location;
     if (filters.maxPrice) params.maxPrice = filters.maxPrice;
 
@@ -130,27 +139,69 @@ export const ticketingApi = {
     const isGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     const url = isGuid ? `/api/events/${id}` : `/api/events/slug/${id}`;
     try {
-      const { data } = await apiClient.get<unknown>(url);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data } = await apiClient.get<any>(url);
+      if (data?.id) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: ticketTypes } = await apiClient.get<any[]>(`/api/events/${data.id}/ticket-types`);
+          if (Array.isArray(ticketTypes) && ticketTypes.length > 0) {
+            data.tiers = ticketTypes.map((t) => ({
+              id: t.id,
+              name: t.name,
+              price: t.price,
+              remaining: t.quantityAvailable ?? t.capacity ?? 100,
+              description: `${t.name} (Tối đa ${t.maxPerOrder ?? 4} vé/đơn)`,
+            }));
+          }
+        } catch {
+          // Fallback if ticket-types call fails
+        }
+      }
       return normalizeEvent(data);
     } catch (error) {
       console.warn(`[TicketingApi] Không tìm thấy sự kiện "${id}" trên Backend, dùng dữ liệu Demo:`, error);
       return demoApi.event(id);
     }
   },
-  reserve: async (eventId: string, tierId: string, quantity: number) => {
+  reserve: async (eventId: string, tierId: string, quantity: number): Promise<Reservation> => {
     if (isDemoMode) return demoApi.reserve(eventId, tierId, quantity);
-    const { data } = await apiClient.post<Reservation>("/api/ticketing/reservations", { eventId, ticketTypeId: tierId, quantity });
-    return data;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await apiClient.post<any>("/api/ticketing/reservations", { eventId, ticketTypeId: tierId, quantity });
+    const expiresAtMs = typeof data.expiresAt === "number"
+      ? data.expiresAt
+      : new Date(data.expiresAt).getTime();
+    return {
+      id: data.id,
+      eventId: data.eventId,
+      tierId: data.tierId || data.ticketTypeId,
+      quantity: data.quantity,
+      expiresAt: expiresAtMs,
+    };
   },
   checkout: async (input: CheckoutInput) => {
     if (isDemoMode) return demoApi.checkout(input);
     const { data } = await apiClient.post<{ paymentUrl: string }>("/api/orders", input);
     return data;
   },
-  tickets: async () => {
+  tickets: async (): Promise<PurchasedTicket[]> => {
     if (isDemoMode) return demoApi.tickets();
-    const { data } = await apiClient.get<PurchasedTicket[]>("/api/tickets/mine");
-    return data;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await apiClient.get<any[]>("/api/tickets/mine");
+    const rawList = Array.isArray(data) ? data : [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return rawList.map((t: any) => ({
+      id: t.id,
+      eventId: t.eventId,
+      eventTitle: t.eventTitle || "Vé tham gia sự kiện",
+      image: t.image || "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
+      venue: t.venue || "TP. Hồ Chí Minh",
+      date: t.date || new Date(t.createdAt || Date.now()).toISOString().slice(0, 10),
+      tierName: t.ticketTypeName || t.tierName || "Vé tiêu chuẩn",
+      holderName: t.holderName || t.customerEmail || "Khách Hàng",
+      code: t.code || t.qrSignature || t.qrPayload || t.ticketCode || t.id,
+      status: ((t.status || "valid").toLowerCase() === "used" ? "used" : (t.status || "valid").toLowerCase() === "cancelled" ? "cancelled" : "valid") as "valid" | "used" | "cancelled",
+    }));
   },
   checkIn: async (code: string) => {
     if (isDemoMode) return demoApi.checkIn(code);
@@ -161,5 +212,61 @@ export const ticketingApi = {
     if (isDemoMode) return demoApi.checkInCount();
     const { data } = await apiClient.get<{ count: number }>("/api/check-in/count");
     return data.count;
+  },
+  getAdminUsers: async (): Promise<AdminUserItem[]> => {
+    if (isDemoMode) return platformDemoApi.getUsers();
+    try {
+      const { data } = await apiClient.get<
+        Array<{
+          id: string;
+          email: string;
+          fullName: string;
+          phoneNumber?: string | null;
+          isActive: boolean;
+          createdAt: string;
+          roles: string[];
+        }>
+      >("/api/identity/users");
+
+      return data.map((u) => {
+        const rolesLower = (u.roles || []).map((r) => r.toLowerCase());
+        let role: UserRole = "customer";
+        if (rolesLower.includes("admin")) role = "admin";
+        else if (rolesLower.includes("organizer")) role = "organizer";
+        else if (rolesLower.includes("staff")) role = "staff";
+
+        const d = new Date(u.createdAt);
+        const formattedDate = !isNaN(d.getTime())
+          ? d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })
+          : u.createdAt;
+
+        return {
+          id: u.id,
+          name: u.fullName || u.email,
+          email: u.email,
+          role,
+          status: u.isActive ? "Active" : "Locked",
+          createdAt: formattedDate,
+        };
+      });
+    } catch (error) {
+      console.warn("[TicketingApi] Không thể lấy danh sách người dùng từ Backend, dùng fallback Demo:", error);
+      return platformDemoApi.getUsers();
+    }
+  },
+  updateUserRole: async (userId: string, role: UserRole): Promise<void> => {
+    if (isDemoMode) {
+      platformDemoApi.updateUserRole(userId, role);
+      return;
+    }
+    const capitalizedRole = role.charAt(0).toUpperCase() + role.slice(1);
+    await apiClient.put(`/api/identity/users/${userId}/role`, { role: capitalizedRole });
+  },
+  updateUserStatus: async (userId: string, isActive: boolean): Promise<void> => {
+    if (isDemoMode) {
+      platformDemoApi.toggleUserStatus(userId);
+      return;
+    }
+    await apiClient.put(`/api/identity/users/${userId}/status`, { isActive });
   },
 };

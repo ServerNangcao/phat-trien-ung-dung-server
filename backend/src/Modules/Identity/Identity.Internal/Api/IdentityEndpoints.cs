@@ -7,30 +7,44 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Ticketing.Infrastructure.Core;
 using Ticketing.SharedKernel;
 
 namespace Identity.Internal.Api;
 
 /// <summary>
-/// 6 Minimal API endpoints cho module Identity.
+/// 9 Minimal API endpoints cho module Identity.
 /// </summary>
 internal static class IdentityEndpoints
 {
+    private static readonly string[] ValidRoles = ["Customer", "Staff", "Organizer", "Admin"];
+
     public static IEndpointRouteBuilder MapIdentityEndpointsInternal(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/identity")
             .WithTags("Identity");
 
         // ── Public endpoints (không yêu cầu xác thực) ──
-        group.MapPost("/register", RegisterAsync);
+        group.MapPost("/register", RegisterAsync)
+            .Produces<AuthResponse>(StatusCodes.Status201Created)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         group.MapPost("/login", LoginAsync);
         group.MapPost("/refresh", RefreshAsync);
+        group.MapPost("/forgot-password", ForgotPasswordAsync);
+        group.MapPost("/reset-password", ResetPasswordAsync);
 
         // ── Protected endpoints (yêu cầu JWT) ──
         group.MapGet("/me", GetProfileAsync).RequireAuthorization();
         group.MapPut("/me", UpdateProfileAsync).RequireAuthorization();
         group.MapPost("/change-password", ChangePasswordAsync).RequireAuthorization();
+
+        // ── Admin endpoints (yêu cầu JWT + Role Admin) ──
+        group.MapGet("/users", GetUsersAsync).RequireAuthorization(policy => policy.RequireRole("Admin"));
+        group.MapPut("/users/{id:guid}/role", UpdateUserRoleAsync).RequireAuthorization(policy => policy.RequireRole("Admin"));
+        group.MapPut("/users/{id:guid}/status", UpdateUserStatusAsync).RequireAuthorization(policy => policy.RequireRole("Admin"));
 
         return app;
     }
@@ -38,7 +52,7 @@ internal static class IdentityEndpoints
     /// <summary>
     /// POST /api/identity/register — Đăng ký tài khoản mới (mặc định role Customer).
     /// </summary>
-    private static async Task<IResult> RegisterAsync(
+    internal static async Task<IResult> RegisterAsync(
         RegisterRequest request,
         IValidator<RegisterRequest> validator,
         UserManager<ApplicationUser> userManager,
@@ -52,18 +66,34 @@ internal static class IdentityEndpoints
             return Result.Validation(error).ToHttpResult();
         }
 
-        // 2. Kiểm tra email đã tồn tại
+        // 2. Kiểm tra email đã tồn tại (pre-check)
         var existingUser = await userManager.FindByEmailAsync(request.Email);
         if (existingUser is not null)
         {
             return Result.Conflict("Email này đã được sử dụng.").ToHttpResult();
         }
 
-        // 3. Tạo user
+        // 3. Tạo user & xử lý race condition mức database
         var user = ApplicationUser.Create(request.Email, request.FullName, request.PhoneNumber);
-        var createResult = await userManager.CreateAsync(user, request.Password);
+        IdentityResult createResult;
+        try
+        {
+            createResult = await userManager.CreateAsync(user, request.Password);
+        }
+        catch (DbUpdateException)
+        {
+            // Bắt xung đột mức DB (Unique Index violation) khi có 2 request chạy đồng thời
+            return Result.Conflict("Email này đã được sử dụng.").ToHttpResult();
+        }
+
         if (!createResult.Succeeded)
         {
+            // Nếu UserManager báo lỗi trùng Email hoặc UserName
+            if (createResult.Errors.Any(e => e.Code is "DuplicateEmail" or "DuplicateUserName"))
+            {
+                return Result.Conflict("Email này đã được sử dụng.").ToHttpResult();
+            }
+
             var error = string.Join("; ", createResult.Errors.Select(e => e.Description));
             return Result.Validation(error).ToHttpResult();
         }
@@ -245,6 +275,185 @@ internal static class IdentityEndpoints
         await jwtTokenService.RevokeAllRefreshTokensAsync(user.Id);
 
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// GET /api/identity/users — Lấy danh sách tất cả người dùng (chỉ Admin).
+    /// </summary>
+    private static async Task<IResult> GetUsersAsync(
+        UserManager<ApplicationUser> userManager)
+    {
+        var users = await userManager.Users
+            .OrderByDescending(u => u.CreatedAt)
+            .ToListAsync();
+
+        var result = new List<AdminUserResponse>(users.Count);
+        foreach (var user in users)
+        {
+            var roles = await userManager.GetRolesAsync(user);
+            result.Add(new AdminUserResponse(
+                Id: user.Id,
+                Email: user.Email!,
+                FullName: user.FullName,
+                PhoneNumber: user.PhoneNumber,
+                IsActive: user.IsActive,
+                CreatedAt: user.CreatedAt,
+                Roles: roles.ToList().AsReadOnly()));
+        }
+
+        return Results.Ok(result);
+    }
+
+    /// <summary>
+    /// PUT /api/identity/users/{id}/role — Đổi vai trò người dùng (chỉ Admin).
+    /// </summary>
+    private static async Task<IResult> UpdateUserRoleAsync(
+        Guid id,
+        UpdateUserRoleRequest request,
+        UserManager<ApplicationUser> userManager)
+    {
+        // 1. Chuẩn hóa và validate tên role
+        var normalized = ValidRoles
+            .FirstOrDefault(r => r.Equals(request.Role, StringComparison.OrdinalIgnoreCase));
+
+        if (normalized is null)
+        {
+            return Result.Validation($"Vai trò '{request.Role}' không hợp lệ. Cho phép: {string.Join(", ", ValidRoles)}.").ToHttpResult();
+        }
+
+        // 2. Tìm user
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null)
+        {
+            return Result.NotFound("Không tìm thấy người dùng.").ToHttpResult();
+        }
+
+        // 3. Xóa toàn bộ role cũ, gán role mới
+        var currentRoles = await userManager.GetRolesAsync(user);
+        if (currentRoles.Count > 0)
+        {
+            await userManager.RemoveFromRolesAsync(user, currentRoles);
+        }
+
+        var addResult = await userManager.AddToRoleAsync(user, normalized);
+        if (!addResult.Succeeded)
+        {
+            var error = string.Join("; ", addResult.Errors.Select(e => e.Description));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        // 4. Trả về thông tin mới
+        var roles = await userManager.GetRolesAsync(user);
+        return Results.Ok(new AdminUserResponse(
+            Id: user.Id,
+            Email: user.Email!,
+            FullName: user.FullName,
+            PhoneNumber: user.PhoneNumber,
+            IsActive: user.IsActive,
+            CreatedAt: user.CreatedAt,
+            Roles: roles.ToList().AsReadOnly()));
+    }
+
+    /// <summary>
+    /// PUT /api/identity/users/{id}/status — Khóa hoặc mở khóa tài khoản (chỉ Admin).
+    /// </summary>
+    private static async Task<IResult> UpdateUserStatusAsync(
+        Guid id,
+        UpdateUserStatusRequest request,
+        UserManager<ApplicationUser> userManager)
+    {
+        // 1. Tìm user
+        var user = await userManager.FindByIdAsync(id.ToString());
+        if (user is null)
+        {
+            return Result.NotFound("Không tìm thấy người dùng.").ToHttpResult();
+        }
+
+        // 2. Cập nhật trạng thái
+        user.SetActive(request.IsActive);
+        var updateResult = await userManager.UpdateAsync(user);
+        if (!updateResult.Succeeded)
+        {
+            var error = string.Join("; ", updateResult.Errors.Select(e => e.Description));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        // 3. Trả về thông tin mới
+        var roles = await userManager.GetRolesAsync(user);
+        return Results.Ok(new AdminUserResponse(
+            Id: user.Id,
+            Email: user.Email!,
+            FullName: user.FullName,
+            PhoneNumber: user.PhoneNumber,
+            IsActive: user.IsActive,
+            CreatedAt: user.CreatedAt,
+            Roles: roles.ToList().AsReadOnly()));
+    }
+
+    /// <summary>
+    /// POST /api/identity/forgot-password — Yêu cầu link/mã đặt lại mật khẩu.
+    /// </summary>
+    private static async Task<IResult> ForgotPasswordAsync(
+        ForgotPasswordRequest request,
+        IValidator<ForgotPasswordRequest> validator,
+        UserManager<ApplicationUser> userManager,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("Identity.ForgotPassword");
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            var error = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email);
+        if (user is null || !user.IsActive)
+        {
+            return Results.Ok(new ForgotPasswordResponse(
+                "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi."));
+        }
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        logger.LogInformation("Password reset token generated for user {Email}: {Token}", user.Email, token);
+
+        return Results.Ok(new ForgotPasswordResponse(
+            "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi.",
+            ResetToken: token));
+    }
+
+    /// <summary>
+    /// POST /api/identity/reset-password — Đặt lại mật khẩu bằng token/OTP.
+    /// </summary>
+    private static async Task<IResult> ResetPasswordAsync(
+        ResetPasswordRequest request,
+        IValidator<ResetPasswordRequest> validator,
+        UserManager<ApplicationUser> userManager,
+        ILoggerFactory loggerFactory)
+    {
+        var logger = loggerFactory.CreateLogger("Identity.ResetPassword");
+        var validationResult = await validator.ValidateAsync(request);
+        if (!validationResult.IsValid)
+        {
+            var error = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        var user = await userManager.FindByEmailAsync(request.Email);
+        if (user is null || !user.IsActive)
+        {
+            return Result.NotFound("Không tìm thấy người dùng hoặc yêu cầu không hợp lệ.").ToHttpResult();
+        }
+
+        var resetResult = await userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        if (!resetResult.Succeeded)
+        {
+            var error = string.Join("; ", resetResult.Errors.Select(e => e.Description));
+            return Result.Validation(error).ToHttpResult();
+        }
+
+        logger.LogInformation("Password successfully reset for user {Email}", user.Email);
+        return Results.Ok(new ResetPasswordResponse("Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới."));
     }
 
     /// <summary>

@@ -11,6 +11,8 @@ interface SiteLayoutProps {
 
 export function SiteLayout({ user, logout }: SiteLayoutProps) {
   const [mobileMenu, setMobileMenu] = useState(false);
+  const isOrganizer = user?.role === "organizer";
+  const isAdmin = user?.role === "admin";
 
   return (
     <>
@@ -25,23 +27,37 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-8 text-[14px] font-semibold text-slate-600 md:flex">
+          <nav className="hidden items-center gap-7 text-[14px] font-semibold text-slate-600 md:flex">
             <a href="/#events" className="hover:text-coral">
               Khám phá
             </a>
             <a href="/#categories" className="hover:text-coral">
               Danh mục
             </a>
-            <a href="/#about" className="hover:text-coral">
-              Dành cho bạn
-            </a>
+            {isOrganizer && (
+              <Link to="/organizer/analytics" className="hover:text-coral">
+                Ban tổ chức
+              </Link>
+            )}
+            {isAdmin && (
+              <Link to="/admin/moderation" className="hover:text-coral">
+                Quản trị
+              </Link>
+            )}
           </nav>
 
           <div className="hidden items-center gap-3 md:flex">
-            <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi">
-              <TicketCheck size={19} />
-              <span>Vé của tôi</span>
-            </Link>
+            {user && (
+              <Link to="/my-tickets" className="header-icon" aria-label="Vé của tôi">
+                <TicketCheck size={19} />
+                <span>Vé của tôi</span>
+              </Link>
+            )}
+            {user && (
+              <Link to="/profile" className="btn-outline !px-3.5 !py-2">
+                Hồ sơ
+              </Link>
+            )}
             {user ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold">{user.name.split(" · ")[0]}</span>
@@ -54,9 +70,11 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
                 Đăng nhập
               </Link>
             )}
-            <Link to="/login" className="btn-primary !px-5 !py-2.5">
-              Tổ chức sự kiện
-            </Link>
+            {(!user || isOrganizer) && (
+              <Link to="/organizer/builder" className="btn-primary !px-5 !py-2.5">
+                Tổ chức sự kiện
+              </Link>
+            )}
           </div>
 
           <button
@@ -73,12 +91,42 @@ export function SiteLayout({ user, logout }: SiteLayoutProps) {
             <Link to="/" onClick={() => setMobileMenu(false)}>
               Khám phá
             </Link>
-            <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>
-              Vé của tôi
-            </Link>
-            <Link to="/login" onClick={() => setMobileMenu(false)}>
-              Đăng nhập
-            </Link>
+            {user && (
+              <Link to="/my-tickets" onClick={() => setMobileMenu(false)}>
+                Vé của tôi
+              </Link>
+            )}
+            {user && (
+              <Link to="/profile" onClick={() => setMobileMenu(false)}>
+                Hồ sơ
+              </Link>
+            )}
+            {isOrganizer && (
+              <Link to="/organizer/analytics" onClick={() => setMobileMenu(false)}>
+                Ban tổ chức
+              </Link>
+            )}
+            {isAdmin && (
+              <Link to="/admin/moderation" onClick={() => setMobileMenu(false)}>
+                Quản trị
+              </Link>
+            )}
+            {user ? (
+              <button
+                type="button"
+                onClick={() => {
+                  logout();
+                  setMobileMenu(false);
+                }}
+                className="text-left font-semibold text-rose-500"
+              >
+                Đăng xuất
+              </button>
+            ) : (
+              <Link to="/login" onClick={() => setMobileMenu(false)}>
+                Đăng nhập
+              </Link>
+            )}
           </div>
         )}
       </header>

@@ -16,14 +16,34 @@ const formatDate = (date?: string) => {
   }).format(d);
 };
 
-const DEFAULT_COVER = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=1400&q=85";
+const DEFAULT_COVER = "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg";
+
+const SAVED_EVENTS_KEY = "ticketing.savedEvents";
+
+function getSavedEventIds(): string[] {
+  try {
+    const raw = localStorage.getItem(SAVED_EVENTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function toggleSavedEventId(eventId: string): boolean {
+  const current = getSavedEventIds();
+  const exists = current.includes(eventId);
+  const next = exists ? current.filter((id) => id !== eventId) : [...current, eventId];
+  localStorage.setItem(SAVED_EVENTS_KEY, JSON.stringify(next));
+  return !exists;
+}
 
 interface EventCardProps {
   event: EventItem;
 }
 
 export function EventCard({ event }: EventCardProps) {
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(() => getSavedEventIds().includes(event.id));
   const lowestPrice =
     event.tiers && event.tiers.length > 0
       ? Math.min(...event.tiers.map((tier) => tier.price))
@@ -44,11 +64,12 @@ export function EventCard({ event }: EventCardProps) {
         <span className="event-type">{event.category || "Sự kiện"}</span>
         <button
           type="button"
-          aria-label="Lưu sự kiện"
+          aria-label={isSaved ? "Bỏ lưu sự kiện" : "Lưu sự kiện"}
+          aria-pressed={isSaved}
           className={`save-button ${isSaved ? "saved" : ""}`}
           onClick={(eventClick) => {
             eventClick.preventDefault();
-            setIsSaved((prev) => !prev);
+            setIsSaved(toggleSavedEventId(event.id));
           }}
         >
           <Heart size={17} />

@@ -10,7 +10,8 @@ export interface TicketTier {
 }
 
 export interface EventItem {
-  id: string;
+  id: string;        // slug hoặc id dùng cho URL
+  rawId?: string;    // GUID gốc từ backend dùng để gọi API reserve
   title: string;
   category: EventCategory;
   location: string;
@@ -28,6 +29,7 @@ export interface EventItem {
 export interface Reservation {
   id: string;
   eventId: string;
+  eventSlug?: string;
   tierId: string;
   quantity: number;
   expiresAt: number;
@@ -58,7 +60,15 @@ export type CheckInStatus = "valid" | "used" | "cancelled" | "invalid";
 // ───────────────────────────────────────────────
 // Identity & Authentication Types
 // ───────────────────────────────────────────────
-export type UserRole = "Customer" | "Organizer" | "Staff" | "Admin" | "customer" | "staff";
+export type UserRole =
+  | "Customer"
+  | "Organizer"
+  | "Staff"
+  | "Admin"
+  | "customer"
+  | "staff"
+  | "organizer"
+  | "admin";
 
 export interface UserSession {
   name: string;
@@ -99,3 +109,102 @@ export interface RegisterRequest {
   phoneNumber?: string | null;
 }
 
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+  resetToken?: string;
+}
+
+export interface ResetPasswordRequest {
+  email: string;
+  token: string;
+  newPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}
+
+export interface UserProfile {
+  fullName: string;
+  email: string;
+  phone: string;
+  dob: string;
+  gender: "Nam" | "Nữ" | "Khác";
+  idNumber: string;
+  city: string;
+  district: string;
+  address: string;
+  taxCompany: string;
+  taxCode: string;
+  taxAddress: string;
+  taxEmail: string;
+  twoFactorEnabled: boolean;
+}
+
+export type ManagedEventStatus = "Published" | "Pending" | "Draft" | "Rejected";
+
+export interface ManagedTicketTier {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  total: number;
+  sold: number;
+  reserved: number;
+  maxPerOrder: number;
+}
+
+export interface ManagedEvent {
+  id: string;
+  title: string;
+  category: EventCategory;
+  city: string;
+  venue: string;
+  date: string;
+  organizer: string;
+  verified: boolean;
+  status: ManagedEventStatus;
+  rejectReason?: string;
+  description: string;
+  schedule: Array<{ time: string; title: string; desc: string }>;
+  tiers: ManagedTicketTier[];
+}
+
+export interface OrganizerOrderItem {
+  orderCode: string;
+  eventId: string;
+  eventTitle: string;
+  buyerName: string;
+  buyerEmail: string;
+  tierName: string;
+  quantity: number;
+  totalAmount: number;
+  paymentStatus: "Paid" | "Pending" | "Refunded";
+  checkInStatus: "CheckedIn" | "NotCheckedIn";
+  createdAt: string;
+}
+
+export interface RefundRequestItem {
+  id: string;
+  orderCode: string;
+  eventTitle: string;
+  buyerName: string;
+  buyerEmail: string;
+  amount: number;
+  reason: string;
+  requestedAt: string;
+  status: "Pending" | "Approved" | "Rejected";
+}
+
+export interface AdminUserItem {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  status: "Active" | "Locked";
+  createdAt: string;
+}

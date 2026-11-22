@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Check, QrCode, Search, ShieldCheck, Ticket, X } from "lucide-react";
 import type { Html5Qrcode } from "html5-qrcode";
 import { ticketingApi } from "../../../api/service";
@@ -21,8 +21,17 @@ export function StaffCheckInPage({ user, logout }: StaffCheckInPageProps) {
   const [scannerActive, setScannerActive] = useState(false);
   const [audioEnabled, setAudioEnabled] = useState(false);
 
+  const queryClient = useQueryClient();
   const scanner = useRef<Html5Qrcode | null>(null);
+  const resumeTimer = useRef<number | null>(null);
   const { initAudio, closeAudio, playTone } = useSoundFeedback();
+
+  const clearResumeTimer = () => {
+    if (resumeTimer.current !== null) {
+      window.clearTimeout(resumeTimer.current);
+      resumeTimer.current = null;
+    }
+  };
 
   const countQuery = useQuery({
     queryKey: ["checkin-count"],
@@ -36,6 +45,7 @@ export function StaffCheckInPage({ user, logout }: StaffCheckInPageProps) {
       const response = await ticketingApi.checkIn(code.trim());
       setCameraError("");
       setResult({ ...response, code: code.trim() });
+      queryClient.setQueryData(["checkin-count"], response.count);
       if (audioEnabled) {
         playTone(response.status);
       }
@@ -46,6 +56,7 @@ export function StaffCheckInPage({ user, logout }: StaffCheckInPageProps) {
 
   useEffect(() => {
     return () => {
+      clearResumeTimer();
       if (scanner.current?.isScanning) void scanner.current.stop();
       closeAudio();
     };
@@ -66,11 +77,12 @@ export function StaffCheckInPage({ user, logout }: StaffCheckInPageProps) {
         { fps: 12, qrbox: { width: 250, height: 250 }, aspectRatio: 1 },
         (decoded) => {
           void nextScanner.pause(true);
-          void processCode(decoded).finally(() =>
-            window.setTimeout(() => {
-              if (nextScanner.isScanning) nextScanner.resume();
-            }, 1800),
-          );
+          clearResumeTimer();
+          void processCode(decoded).finally(() => {
+            resumeTimer.current = window.setTimeout(() => {
+              if (scanner.current?.isScanning) scanner.current.resume();
+            }, 1800);
+          });
         },
         () => undefined,
       );
@@ -83,6 +95,7 @@ export function StaffCheckInPage({ user, logout }: StaffCheckInPageProps) {
   };
 
   const stopScanner = async () => {
+    clearResumeTimer();
     if (scanner.current?.isScanning) await scanner.current.stop();
     setScannerActive(false);
   };

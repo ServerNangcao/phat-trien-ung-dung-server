@@ -1,11 +1,13 @@
+using CheckIn.Contracts;
 using Events.Internal.Infrastructure;
 using Microsoft.EntityFrameworkCore;
+using Orders.Contracts;
 using Ticketing.SharedKernel;
 
 namespace Events.Internal.Features.Reports;
 
 /// <summary>
-/// Response tổng hợp báo cáo sự kiện theo Organizer.
+/// Response tổng hợp báo cáo sự kiện theo Organizer (bao gồm số liệu tài chính FR-23).
 /// </summary>
 internal sealed record OrganizerReportResponse(
     Guid OrganizerId,
@@ -15,6 +17,8 @@ internal sealed record OrganizerReportResponse(
     int OnSaleCount,
     int EndedCount,
     int RejectedCount,
+    int CancelledCount,
+    decimal TotalRevenue,
     IReadOnlyList<EventReportItem> Events);
 
 internal sealed record EventReportItem(
@@ -26,13 +30,18 @@ internal sealed record EventReportItem(
     decimal? MinPrice,
     decimal? MaxPrice,
     string CategoryName,
-    string VenueCity);
+    string VenueCity,
+    decimal TotalRevenue,
+    int TotalCheckedIn);
 
 /// <summary>
 /// Handler tạo báo cáo tổng hợp sự kiện theo Organizer.
 /// Dùng để Organizer xem dashboard quản lý sự kiện của mình.
 /// </summary>
-internal sealed class GetOrganizerReportHandler(EventsDbContext db)
+internal sealed class GetOrganizerReportHandler(
+    EventsDbContext db,
+    IOrdersModuleApi? ordersApi = null,
+    ICheckInModuleApi? checkInApi = null)
 {
     public async Task<Result<OrganizerReportResponse>> HandleAsync(
         Guid organizerId,
@@ -45,6 +54,21 @@ internal sealed class GetOrganizerReportHandler(EventsDbContext db)
             .OrderByDescending(e => e.CreatedAt)
             .ToListAsync(cancellationToken);
 
+        var eventIds = events.Select(e => e.Id).ToList();
+
+        IReadOnlyDictionary<Guid, decimal> revenueMap = new Dictionary<Guid, decimal>();
+        IReadOnlyDictionary<Guid, int> checkInMap = new Dictionary<Guid, int>();
+
+        if (ordersApi is not null && eventIds.Count > 0)
+        {
+            revenueMap = await ordersApi.GetTotalRevenuesByEventIdsAsync(eventIds, cancellationToken);
+        }
+
+        if (checkInApi is not null && eventIds.Count > 0)
+        {
+            checkInMap = await checkInApi.GetCheckedInCountsByEventIdsAsync(eventIds, cancellationToken);
+        }
+
         var items = events.Select(e => new EventReportItem(
             e.Id,
             e.Title,
@@ -53,8 +77,12 @@ internal sealed class GetOrganizerReportHandler(EventsDbContext db)
             e.EndsAt,
             e.MinPrice,
             e.MaxPrice,
-            e.Category.Name,
-            e.Venue.City)).ToList();
+            e.Category?.Name ?? string.Empty,
+            e.Venue?.City ?? string.Empty,
+            TotalRevenue: revenueMap.TryGetValue(e.Id, out var rev) ? rev : 0,
+            TotalCheckedIn: checkInMap.TryGetValue(e.Id, out var checkIn) ? checkIn : 0)).ToList();
+
+        var totalRevenueAllEvents = items.Sum(x => x.TotalRevenue);
 
         var report = new OrganizerReportResponse(
             OrganizerId: organizerId,
@@ -64,6 +92,8 @@ internal sealed class GetOrganizerReportHandler(EventsDbContext db)
             OnSaleCount: events.Count(e => e.Status == Domain.EventStatus.OnSale),
             EndedCount: events.Count(e => e.Status == Domain.EventStatus.Ended),
             RejectedCount: events.Count(e => e.Status == Domain.EventStatus.Rejected),
+            CancelledCount: events.Count(e => e.Status == Domain.EventStatus.Cancelled),
+            TotalRevenue: totalRevenueAllEvents,
             Events: items);
 
         return Result.Success(report);

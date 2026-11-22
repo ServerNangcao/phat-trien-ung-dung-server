@@ -1,4 +1,4 @@
-using Events.Internal.Domain;
+﻿using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Ticketing.SharedKernel;
@@ -16,7 +16,8 @@ internal sealed record ListEventsQuery(
     decimal? MaxPrice = null,
     string? Search = null,
     int Page = 1,
-    int PageSize = 20);
+    int PageSize = 20,
+    string? Category = null);
 
 internal sealed record EventSummaryResponse(
     Guid Id,
@@ -59,15 +60,21 @@ internal sealed class ListEventsHandler(EventsDbContext db)
             .Include(e => e.Venue)
             .AsQueryable();
 
-        // Lọc theo Status (mặc định chỉ show OnSale nếu không truyền)
-        if (!string.IsNullOrWhiteSpace(query.Status))
-            q = q.Where(e => e.Status == query.Status);
+        // Lọc theo Status: Chỉ cho phép các trạng thái công khai (OnSale hoặc Ended)
+        // Ngăn chặn người dùng public truy vấn Draft, PendingApproval, Rejected
+        if (string.Equals(query.Status, EventStatus.Ended, StringComparison.OrdinalIgnoreCase))
+            q = q.Where(e => e.Status == EventStatus.Ended);
         else
             q = q.Where(e => e.Status == EventStatus.OnSale);
 
         // Lọc theo Category
         if (query.CategoryId.HasValue)
             q = q.Where(e => e.CategoryId == query.CategoryId.Value);
+        else if (!string.IsNullOrWhiteSpace(query.Category) && query.Category != "Tất cả")
+        {
+            var cat = query.Category.Trim();
+            q = q.Where(e => e.Category.Name == cat || EF.Functions.ILike(e.Category.Name, $"%{cat}%"));
+        }
 
         // Lọc theo thành phố
         if (!string.IsNullOrWhiteSpace(query.City))

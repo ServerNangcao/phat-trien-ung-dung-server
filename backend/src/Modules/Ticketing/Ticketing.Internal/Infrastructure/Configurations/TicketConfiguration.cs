@@ -29,6 +29,9 @@ internal sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
         builder.Property(x => x.EventId)
             .IsRequired();
 
+        builder.Property(x => x.CustomerId)
+            .IsRequired();
+
         builder.Property(x => x.Sequence)
             .IsRequired();
 
@@ -68,6 +71,8 @@ internal sealed class TicketConfiguration : IEntityTypeConfiguration<Ticket>
 
         builder.HasIndex(x => x.OrderId)
             .HasDatabaseName("ix_tickets_order");
+
+        builder.HasIndex(x => x.CustomerId)
+            .HasDatabaseName("ix_tickets_customer");
     }
 }
-

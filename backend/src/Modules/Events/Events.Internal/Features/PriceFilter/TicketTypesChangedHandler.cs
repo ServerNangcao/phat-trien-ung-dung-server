@@ -1,4 +1,5 @@
 using Events.Internal.Infrastructure;
+using Events.Internal.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
 using Ticketing.Contracts;
 using Ticketing.Infrastructure.Core.Outbox;
@@ -6,17 +7,17 @@ using Ticketing.Infrastructure.Core.Outbox;
 namespace Events.Internal.Features.PriceFilter;
 
 /// <summary>
-/// Handler nhan TicketTypesChangedIntegrationEvent tu Outbox cua Ticketing module.
-/// Cap nhat MinPrice / MaxPrice vao Event de ho tro filter gia hieu qua.
+/// Handler nhận TicketTypesChangedIntegrationEvent từ Outbox của Ticketing module.
+/// Cập nhật MinPrice / MaxPrice vào Event để hỗ trợ filter giá hiệu quả và xóa Redis cache (ADR-0004).
 /// </summary>
-internal sealed class TicketTypesChangedHandler(EventsDbContext db)
+internal sealed class TicketTypesChangedHandler(EventsDbContext db, IEventsCacheService? cache = null)
     : IIntegrationEventHandler<TicketTypesChangedIntegrationEvent>
 {
     public async Task HandleAsync(
         TicketTypesChangedIntegrationEvent integrationEvent,
         CancellationToken cancellationToken)
     {
-        // Inbox deduplication — tranh xu ly lap
+        // Inbox deduplication — tránh xử lý lặp
         var isNew = await db.TryAddInboxMessageAsync(
             integrationEvent.EventId,
             nameof(TicketTypesChangedHandler),
@@ -29,11 +30,16 @@ internal sealed class TicketTypesChangedHandler(EventsDbContext db)
 
         if (@event is null)
         {
-            // Event chua ton tai trong Events module — bo qua (eventual consistency)
+            // Event chưa tồn tại trong Events module — bỏ qua (eventual consistency)
             return;
         }
 
         @event.UpdatePriceRange(integrationEvent.MinPrice, integrationEvent.MaxPrice);
         await db.SaveChangesAsync(cancellationToken);
+
+        if (cache is not null)
+        {
+            await cache.InvalidateEventAsync(@event.Id, @event.Slug, cancellationToken);
+        }
     }
 }
