@@ -14,26 +14,26 @@ namespace Events.Internal.Features.Reports;
 /// <summary>
 /// Báo cáo phân tích doanh thu, số vé bán theo hạng và lượt check-in của sự kiện (FR-23).
 /// </summary>
-internal sealed record EventAnalyticsResponse(
+internal sealed record OrganizerEventAnalyticsResponse(
     Guid EventId,
     string EventTitle,
     string Status,
     decimal TotalRevenue,
     int TotalOrdersCount,
     int TotalTicketsSold,
-    int TotalCheckedIn,
+    int CheckedInAttendees,
     double AttendanceRatePercentage,
-    IReadOnlyList<EventTierAnalyticsDto> TiersBreakdown,
+    IReadOnlyList<TicketTierAnalyticsItem> Tiers,
     DateTime CalculatedAt);
 
-internal sealed record EventTierAnalyticsDto(
+internal sealed record TicketTierAnalyticsItem(
     Guid TicketTypeId,
-    string TicketTypeName,
+    string TierName,
     decimal Price,
     int TotalCapacity,
-    int QuantitySold,
+    int SoldCount,
     int QuantityAvailable,
-    decimal TotalRevenue);
+    decimal Revenue);
 
 internal sealed class GetEventAnalyticsHandler(
     EventsDbContext db,
@@ -47,7 +47,7 @@ internal sealed class GetEventAnalyticsHandler(
     private const string CachePrefix = "analytics:events:";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
-    public async Task<Result<EventAnalyticsResponse>> HandleAsync(
+    public async Task<Result<OrganizerEventAnalyticsResponse>> HandleAsync(
         Guid eventId,
         Guid? organizerId = null,
         bool isAdmin = false,
@@ -55,10 +55,10 @@ internal sealed class GetEventAnalyticsHandler(
     {
         var @event = await db.Events.FirstOrDefaultAsync(e => e.Id == eventId, cancellationToken);
         if (@event is null)
-            return Result.NotFound<EventAnalyticsResponse>("Sự kiện không tồn tại.");
+            return Result.NotFound<OrganizerEventAnalyticsResponse>("Sự kiện không tồn tại.");
 
         if (!isAdmin && organizerId.HasValue && @event.OrganizerId != organizerId.Value)
-            return Result.Forbidden<EventAnalyticsResponse>("Bạn không có quyền truy cập dữ liệu phân tích của sự kiện này.");
+            return Result.Forbidden<OrganizerEventAnalyticsResponse>("Bạn không có quyền truy cập dữ liệu phân tích của sự kiện này.");
 
         var cacheKey = $"{CachePrefix}{eventId}";
 
@@ -70,7 +70,7 @@ internal sealed class GetEventAnalyticsHandler(
                 var cachedJson = await cache.GetStringAsync(cacheKey, cancellationToken);
                 if (!string.IsNullOrEmpty(cachedJson))
                 {
-                    var cached = JsonSerializer.Deserialize<EventAnalyticsResponse>(cachedJson, JsonOptions);
+                    var cached = JsonSerializer.Deserialize<OrganizerEventAnalyticsResponse>(cachedJson, JsonOptions);
                     if (cached is not null) return Result.Success(cached);
                 }
             }
@@ -104,14 +104,14 @@ internal sealed class GetEventAnalyticsHandler(
             var sold = hasSales && sales is not null ? sales.QuantitySold : tt.SoldQuantity;
             var rev = hasSales && sales is not null ? sales.TotalRevenue : (sold * tt.Price);
 
-            return new EventTierAnalyticsDto(
+            return new TicketTierAnalyticsItem(
                 TicketTypeId: tt.Id,
-                TicketTypeName: tt.Name,
+                TierName: tt.Name,
                 Price: tt.Price,
                 TotalCapacity: tt.TotalQuantity,
-                QuantitySold: sold,
+                SoldCount: sold,
                 QuantityAvailable: tt.AvailableQuantity,
-                TotalRevenue: rev);
+                Revenue: rev);
         }).ToList();
 
         // Nếu có hạng vé bán từ Orders mà không nằm trong ticketTypes query
@@ -119,33 +119,33 @@ internal sealed class GetEventAnalyticsHandler(
         {
             if (tiersBreakdown.All(t => t.TicketTypeId != extra.TicketTypeId))
             {
-                tiersBreakdown.Add(new EventTierAnalyticsDto(
+                tiersBreakdown.Add(new TicketTierAnalyticsItem(
                     TicketTypeId: extra.TicketTypeId,
-                    TicketTypeName: extra.TicketTypeName,
+                    TierName: extra.TicketTypeName,
                     Price: 0,
                     TotalCapacity: extra.QuantitySold,
-                    QuantitySold: extra.QuantitySold,
+                    SoldCount: extra.QuantitySold,
                     QuantityAvailable: 0,
-                    TotalRevenue: extra.TotalRevenue));
+                    Revenue: extra.TotalRevenue));
             }
         }
 
-        var totalSold = orderRevenue.TotalTicketsSold > 0 ? orderRevenue.TotalTicketsSold : tiersBreakdown.Sum(x => x.QuantitySold);
+        var totalSold = orderRevenue.TotalTicketsSold > 0 ? orderRevenue.TotalTicketsSold : tiersBreakdown.Sum(x => x.SoldCount);
         var totalCheckedIn = checkInSummary.TotalCheckedIn;
         var attendanceRate = totalSold > 0
             ? Math.Round(((double)totalCheckedIn / totalSold) * 100, 2)
             : 0.0;
 
-        var response = new EventAnalyticsResponse(
+        var response = new OrganizerEventAnalyticsResponse(
             EventId: eventId,
             EventTitle: @event.Title,
             Status: @event.Status,
             TotalRevenue: orderRevenue.TotalRevenue,
             TotalOrdersCount: orderRevenue.TotalOrdersCount,
             TotalTicketsSold: totalSold,
-            TotalCheckedIn: totalCheckedIn,
+            CheckedInAttendees: totalCheckedIn,
             AttendanceRatePercentage: attendanceRate,
-            TiersBreakdown: tiersBreakdown,
+            Tiers: tiersBreakdown,
             CalculatedAt: DateTime.UtcNow);
 
         // Lưu / Cập nhật vào bảng EventStatistics phục vụ truy vấn định kỳ và fallback nhanh

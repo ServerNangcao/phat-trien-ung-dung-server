@@ -138,7 +138,7 @@ public static class EventsModule
             return result.ToHttpResult();
         });
 
-        // ── Events: Organizer (JWT claim / X-Organizer-Id) ───────────
+        // ── Events: Organizer (JWT Bearer required) ───────────────────
 
         // GET /api/events/mine: Organizer xem tất cả sự kiện của mình (mọi trạng thái)
         events.MapGet("/mine", async (
@@ -151,12 +151,12 @@ public static class EventsModule
             CancellationToken ct = default) =>
         {
             if (!TryGetOrganizerId(ctx, out var organizerId))
-                return Results.Problem("Không xác định được danh tính Organizer (yêu cầu JWT hoặc header X-Organizer-Id).", statusCode: 401);
+                return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
 
             var query = new ListOrganizerEventsQuery(organizerId, status, search, page, pageSize);
             var result = await handler.HandleAsync(query, ct);
             return result.ToHttpResult();
-        });
+        }).RequireAuthorization();
 
         // POST /api/events
         events.MapPost("/", async (
@@ -166,11 +166,11 @@ public static class EventsModule
             CancellationToken ct) =>
         {
             if (!TryGetOrganizerId(ctx, out var organizerId))
-                return Results.Problem("Không xác định được danh tính Organizer (yêu cầu JWT hoặc header X-Organizer-Id).", statusCode: 401);
+                return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
 
             var result = await handler.HandleAsync(organizerId, request, ct);
             return result.ToHttpResult(201);
-        });
+        }).RequireAuthorization();
 
         // PUT /api/events/{id}
         events.MapPut("/{id:guid}", async (
@@ -181,11 +181,11 @@ public static class EventsModule
             CancellationToken ct) =>
         {
             if (!TryGetOrganizerId(ctx, out var organizerId))
-                return Results.Problem("Không xác định được danh tính Organizer (yêu cầu JWT hoặc header X-Organizer-Id).", statusCode: 401);
+                return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
 
             var result = await handler.HandleAsync(id, organizerId, request, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization();
 
         // POST /api/events/{id}/submit
         events.MapPost("/{id:guid}/submit", async (
@@ -195,11 +195,11 @@ public static class EventsModule
             CancellationToken ct) =>
         {
             if (!TryGetOrganizerId(ctx, out var organizerId))
-                return Results.Problem("Không xác định được danh tính Organizer (yêu cầu JWT hoặc header X-Organizer-Id).", statusCode: 401);
+                return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
 
             var result = await handler.SubmitForApprovalAsync(id, organizerId, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization();
 
         // POST /api/events/{id}/cancel: Hủy sự kiện (Organizer hoặc Admin)
         events.MapPost("/{id:guid}/cancel", async (
@@ -220,7 +220,7 @@ public static class EventsModule
 
             var result = await handler.CancelAsync(id, organizerId, isAdmin, body?.Reason, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization();
 
         // POST /api/events/{id}/cover-image/presign
         events.MapPost("/{id:guid}/cover-image/presign", async (
@@ -231,11 +231,11 @@ public static class EventsModule
             CancellationToken ct) =>
         {
             if (!TryGetOrganizerId(ctx, out var organizerId))
-                return Results.Problem("Không xác định được danh tính Organizer (yêu cầu JWT hoặc header X-Organizer-Id).", statusCode: 401);
+                return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
 
             var result = await handler.HandleAsync(id, organizerId, body.ContentType, ct);
             return result.ToHttpResult();
-        });
+        }).RequireAuthorization();
 
         // POST /api/events/{id}/cover-image/confirm
         events.MapPost("/{id:guid}/cover-image/confirm", async (
@@ -246,13 +246,13 @@ public static class EventsModule
             CancellationToken ct) =>
         {
             if (!TryGetOrganizerId(ctx, out var organizerId))
-                return Results.Problem("Không xác định được danh tính Organizer (yêu cầu JWT hoặc header X-Organizer-Id).", statusCode: 401);
+                return Results.Problem("Không xác định được danh tính Organizer.", statusCode: 401);
 
             var result = await handler.HandleAsync(id, organizerId, body.ObjectKey, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization();
 
-        // ── Events: Admin ─────────────────────────────────────────────
+        // ── Events: Admin (JWT Bearer + Role=Admin required) ──────────
 
         // POST /api/events/{id}/approve
         events.MapPost("/{id:guid}/approve", async (
@@ -262,7 +262,7 @@ public static class EventsModule
         {
             var result = await handler.ApproveAsync(id, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization(p => p.RequireRole("Admin"));
 
         // POST /api/events/{id}/reject
         events.MapPost("/{id:guid}/reject", async (
@@ -273,7 +273,7 @@ public static class EventsModule
         {
             var result = await handler.RejectAsync(id, body.Reason, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization(p => p.RequireRole("Admin"));
 
         // POST /api/events/{id}/end
         events.MapPost("/{id:guid}/end", async (
@@ -283,7 +283,7 @@ public static class EventsModule
         {
             var result = await handler.EndAsync(id, ct);
             return result.ToHttpResult(204);
-        });
+        }).RequireAuthorization(p => p.RequireRole("Admin"));
 
         // ── Categories ────────────────────────────────────────────────
 
@@ -340,7 +340,7 @@ public static class EventsModule
 
             var result = await handler.HandleAsync(id, organizerId, isAdmin, ct);
             return result.ToHttpResult();
-        });
+        }).RequireAuthorization();
 
         // GET /api/reports/events/organizer/{organizerId}
         reports.MapGet("/organizer/{organizerId:guid}", async (
@@ -350,7 +350,7 @@ public static class EventsModule
         {
             var result = await handler.HandleAsync(organizerId, ct);
             return result.ToHttpResult();
-        });
+        }).RequireAuthorization();
 
         // GET /api/reports/events/admin?from=...&to=...
         reports.MapGet("/admin", async (
@@ -361,7 +361,7 @@ public static class EventsModule
         {
             var result = await handler.HandleAsync(from, to, ct);
             return result.ToHttpResult();
-        });
+        }).RequireAuthorization(p => p.RequireRole("Admin"));
 
         return app;
     }
@@ -370,7 +370,7 @@ public static class EventsModule
     {
         organizerId = Guid.Empty;
 
-        // 1. Lấy từ JWT claims (NameIdentifier, sub, id)
+        // Lấy từ JWT claims (NameIdentifier, sub, id)
         var claim = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                     ?? ctx.User.FindFirst("sub")?.Value
                     ?? ctx.User.FindFirst("id")?.Value;
@@ -378,17 +378,12 @@ public static class EventsModule
         if (!string.IsNullOrEmpty(claim) && Guid.TryParse(claim, out organizerId))
             return true;
 
-        // 2. Fallback đọc header X-Organizer-Id cho development / testing
-        if (Guid.TryParse(ctx.Request.Headers["X-Organizer-Id"], out organizerId))
-            return true;
-
         return false;
     }
 
     private static bool IsAdmin(HttpContext ctx)
     {
-        return ctx.User.IsInRole("Admin") ||
-               string.Equals(ctx.Request.Headers["X-Role"], "Admin", StringComparison.OrdinalIgnoreCase);
+        return ctx.User.IsInRole("Admin");
     }
 }
 

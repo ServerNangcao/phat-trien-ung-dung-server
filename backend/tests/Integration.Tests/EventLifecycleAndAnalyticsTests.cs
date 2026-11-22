@@ -318,9 +318,9 @@ public class EventLifecycleAndAnalyticsTests : IDisposable
         var data = result.Value;
         Assert.Equal(15_000_000m, data.TotalRevenue);
         Assert.Equal(30, data.TotalTicketsSold);
-        Assert.Equal(24, data.TotalCheckedIn);
+        Assert.Equal(24, data.CheckedInAttendees);
         Assert.Equal(80.0, data.AttendanceRatePercentage); // 24 / 30 = 80.0%
-        Assert.Equal(2, data.TiersBreakdown.Count);
+        Assert.Equal(2, data.Tiers.Count);
 
         // Kiểm tra EventStatistics được lưu vào DB
         var savedStats = await _db.EventStatistics.FirstOrDefaultAsync(s => s.EventId == @event.Id);
