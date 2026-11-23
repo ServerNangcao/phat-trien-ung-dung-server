@@ -1,3 +1,4 @@
+using Events.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ticketing.Contracts;
@@ -14,15 +15,18 @@ internal sealed class TicketingService : ITicketingModuleApi
     private readonly TicketingDbContext _db;
     private readonly QrSigner _signer;
     private readonly ILogger<TicketingService> _logger;
+    private readonly IEventsModuleApi? _eventsApi;
 
     public TicketingService(
         TicketingDbContext db,
         QrSigner signer,
-        ILogger<TicketingService> logger)
+        ILogger<TicketingService> logger,
+        IEventsModuleApi? eventsApi = null)
     {
         _db = db;
         _signer = signer;
         _logger = logger;
+        _eventsApi = eventsApi;
     }
 
     /// <summary>
@@ -274,7 +278,7 @@ internal sealed class TicketingService : ITicketingModuleApi
         CancellationToken cancellationToken = default)
     {
         var orderIdList = orderIds.ToList();
-        return await _db.Tickets
+        var tickets = await _db.Tickets
             .AsNoTracking()
             .Include(t => t.TicketType)
             .Where(t => orderIdList.Contains(t.OrderId))
@@ -294,6 +298,8 @@ internal sealed class TicketingService : ITicketingModuleApi
                 CreatedAt = t.CreatedAt
             })
             .ToListAsync(cancellationToken);
+
+        return await EnrichEventTitlesAsync(tickets, cancellationToken);
     }
 
     /// <summary>
@@ -303,7 +309,7 @@ internal sealed class TicketingService : ITicketingModuleApi
         Guid customerId,
         CancellationToken cancellationToken = default)
     {
-        return await _db.Tickets
+        var tickets = await _db.Tickets
             .AsNoTracking()
             .Include(t => t.TicketType)
             .Where(t => t.CustomerId == customerId)
@@ -323,6 +329,27 @@ internal sealed class TicketingService : ITicketingModuleApi
                 CreatedAt = t.CreatedAt
             })
             .ToListAsync(cancellationToken);
+
+        return await EnrichEventTitlesAsync(tickets, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<TicketDto>> EnrichEventTitlesAsync(
+        List<TicketDto> tickets,
+        CancellationToken cancellationToken)
+    {
+        if (_eventsApi is null || tickets.Count == 0)
+        {
+            return tickets;
+        }
+
+        var eventIds = tickets.Select(t => t.EventId).Distinct();
+        var eventsById = await _eventsApi.GetEventsByIdsAsync(eventIds, cancellationToken);
+
+        return tickets
+            .Select(t => eventsById.TryGetValue(t.EventId, out var ev) && !string.IsNullOrWhiteSpace(ev.Title)
+                ? t with { EventTitle = ev.Title }
+                : t)
+            .ToList();
     }
 
     /// <summary>

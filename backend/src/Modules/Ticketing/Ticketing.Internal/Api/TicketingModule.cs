@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Security.Claims;
+using Events.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -237,6 +239,7 @@ public static class TicketingModule
         group.MapGet("/tickets/mine", async (
             HttpContext context,
             TicketingDbContext db,
+            IEventsModuleApi eventsApi,
             CancellationToken ct) =>
         {
             var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
@@ -262,18 +265,29 @@ public static class TicketingModule
                     .ToListAsync(ct);
             }
 
-            var result = tickets.Select(t => new
+            var eventIds = tickets.Select(t => t.EventId).Distinct();
+            var eventsById = await eventsApi.GetEventsByIdsAsync(eventIds, ct);
+
+            var result = tickets.Select(t =>
             {
-                id = t.Id,
-                eventId = t.EventId,
-                eventTitle = "Vé tham gia sự kiện",
-                image = "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
-                venue = "TP. Hồ Chí Minh",
-                date = t.CreatedAt.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
-                tierName = t.TicketType != null ? t.TicketType.Name : "Vé tiêu chuẩn",
-                holderName = string.IsNullOrEmpty(t.CustomerEmail) ? "Khách Hàng" : t.CustomerEmail,
-                code = t.QrSignature,
-                status = t.Status.ToLowerInvariant()
+                eventsById.TryGetValue(t.EventId, out var ev);
+                var eventDate = ev?.StartsAt ?? t.CreatedAt;
+
+                return new
+                {
+                    id = t.Id,
+                    eventId = t.EventId,
+                    eventTitle = !string.IsNullOrWhiteSpace(ev?.Title) ? ev.Title : "Vé tham gia sự kiện",
+                    image = !string.IsNullOrWhiteSpace(ev?.CoverImageUrl)
+                        ? ev.CoverImageUrl
+                        : "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
+                    venue = FormatVenue(ev),
+                    date = eventDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    tierName = t.TicketType != null ? t.TicketType.Name : "Vé tiêu chuẩn",
+                    holderName = string.IsNullOrEmpty(t.CustomerEmail) ? "Khách Hàng" : t.CustomerEmail,
+                    code = t.QrSignature,
+                    status = t.Status.ToLowerInvariant()
+                };
             });
 
             return Results.Ok(result);
@@ -310,5 +324,30 @@ public static class TicketingModule
         .Produces(StatusCodes.Status404NotFound);
 
         return app;
+    }
+
+    private static string FormatVenue(EventBriefDto? ev)
+    {
+        if (ev is null)
+        {
+            return "TP. Hồ Chí Minh";
+        }
+
+        var hasName = !string.IsNullOrWhiteSpace(ev.VenueName);
+        var hasCity = !string.IsNullOrWhiteSpace(ev.VenueCity);
+
+        if (hasName && hasCity)
+        {
+            return ev.VenueName.Contains(ev.VenueCity, StringComparison.OrdinalIgnoreCase)
+                ? ev.VenueName
+                : $"{ev.VenueName}, {ev.VenueCity}";
+        }
+
+        if (hasName)
+        {
+            return ev.VenueName;
+        }
+
+        return hasCity ? ev.VenueCity : "TP. Hồ Chí Minh";
     }
 }

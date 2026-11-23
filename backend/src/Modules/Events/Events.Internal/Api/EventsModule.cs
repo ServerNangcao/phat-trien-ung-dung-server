@@ -1,5 +1,6 @@
-﻿using System.Security.Claims;
+using System.Security.Claims;
 using Amazon.S3;
+using Events.Contracts;
 using Events.Internal.Features.Events.ChangeEventStatus;
 using Events.Internal.Features.Events.CreateEvent;
 using Events.Internal.Features.Events.GetEvent;
@@ -79,6 +80,9 @@ public static class EventsModule
         services.AddScoped<GetOrganizerReportHandler>();
         services.AddScoped<GetAdminReportHandler>();
         services.AddScoped<GetEventAnalyticsHandler>();
+
+        // ── Module API (in-process contract cho các module khác) ────
+        services.AddScoped<IEventsModuleApi, EventsModuleApi>();
 
         // ── Integration Event Handlers ──────────────────────────────
         services.RegisterIntegrationEventHandler<TicketTypesChangedIntegrationEvent, TicketTypesChangedHandler>();

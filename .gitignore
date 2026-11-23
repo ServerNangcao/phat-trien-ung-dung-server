@@ -28,8 +28,12 @@ frontend/test-results/
 .agents/
 .agent/
 
+## Media & Screenshots
+screenshots/
+
 ## Mimosa
 .mimosa/
+
 
 ## Markdown docs (except README.md)
 *.md

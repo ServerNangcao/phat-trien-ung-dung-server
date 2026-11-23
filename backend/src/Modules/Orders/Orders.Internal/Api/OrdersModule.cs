@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Events.Contracts;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -51,6 +52,7 @@ public static class OrdersModule
             CheckoutOrderRequest request,
             OrdersDbContext db,
             ITicketingModuleApi ticketingApi,
+            IEventsModuleApi eventsApi,
             CancellationToken ct) =>
         {
             var existingOrder = await db.Orders.FirstOrDefaultAsync(o => o.ReservationId == request.ReservationId, ct);
@@ -87,6 +89,12 @@ public static class OrdersModule
             var customerName = string.IsNullOrWhiteSpace(request.Name) ? "Khách Hàng" : request.Name;
             var customerEmail = string.IsNullOrWhiteSpace(request.Email) ? "customer@ticketing.local" : request.Email;
 
+            var eventInfo = await eventsApi.GetEventByIdAsync(reservation.EventId, ct);
+            var eventTitle = !string.IsNullOrWhiteSpace(eventInfo?.Title) ? eventInfo.Title : "Sự kiện";
+
+            var ticketTypes = await ticketingApi.GetTypesAsync(reservation.EventId, ct);
+            var ticketTypeName = ticketTypes.FirstOrDefault(t => t.Id == reservation.TicketTypeId)?.Name ?? "Vé tiêu chuẩn";
+
             // 1. Tạo đơn hàng Orders
             var order = Order.Create(
                 customerId,
@@ -96,7 +104,7 @@ public static class OrdersModule
                 customerEmail,
                 totalAmount);
 
-            order.AddItem(reservation.TicketTypeId, "Vé điện tử", reservation.UnitPrice, reservation.Quantity);
+            order.AddItem(reservation.TicketTypeId, ticketTypeName, reservation.UnitPrice, reservation.Quantity);
             order.MarkPaid();
             db.Orders.Add(order);
 
@@ -114,9 +122,9 @@ public static class OrdersModule
                 customerId,
                 customerEmail,
                 customerName,
-                "Sự kiện",
+                eventTitle,
                 reservation.TicketTypeId,
-                "Vé tiêu chuẩn",
+                ticketTypeName,
                 reservation.UnitPrice,
                 reservation.Quantity,
                 ct);
