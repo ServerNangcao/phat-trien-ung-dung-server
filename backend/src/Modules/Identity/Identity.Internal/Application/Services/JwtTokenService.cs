@@ -78,6 +78,20 @@ internal sealed class JwtTokenService
         return (new JwtSecurityTokenHandler().WriteToken(token), expiresAt);
     }
 
+    private static (RefreshToken Token, string RawToken) CreateRefreshToken(Guid userId)
+    {
+        var randomBytes = RandomNumberGenerator.GetBytes(64);
+        var rawToken = Convert.ToBase64String(randomBytes);
+        var tokenHash = HashToken(rawToken);
+
+        var refreshToken = RefreshToken.Create(
+            userId,
+            tokenHash,
+            DateTime.UtcNow.AddDays(7));
+
+        return (refreshToken, rawToken);
+    }
+
     /// <summary>
     /// Sinh Refresh Token: chuỗi ngẫu nhiên 64 byte → Base64,
     /// hash SHA-256 rồi lưu vào bảng RefreshTokens.
@@ -85,17 +99,7 @@ internal sealed class JwtTokenService
     /// </summary>
     public async Task<string> GenerateRefreshTokenAsync(Guid userId)
     {
-        // Sinh token ngẫu nhiên
-        var randomBytes = RandomNumberGenerator.GetBytes(64);
-        var rawToken = Convert.ToBase64String(randomBytes);
-
-        // Hash trước khi lưu DB
-        var tokenHash = HashToken(rawToken);
-
-        var refreshToken = RefreshToken.Create(
-            userId,
-            tokenHash,
-            DateTime.UtcNow.AddDays(7));
+        var (refreshToken, rawToken) = CreateRefreshToken(userId);
 
         _dbContext.RefreshTokens.Add(refreshToken);
         await _dbContext.SaveChangesAsync();
@@ -167,15 +171,11 @@ internal sealed class JwtTokenService
 
         // Sinh token mới
         var (newAccessToken, expiresAt) = await GenerateAccessTokenAsync(user);
-        var newRawRefreshToken = await GenerateRefreshTokenAsync(user.Id);
+        var (newRefreshToken, newRawRefreshToken) = CreateRefreshToken(user.Id);
 
-        // Lấy ID của token mới vừa tạo để ghi vào ReplacedByTokenId
-        var newTokenHash = HashToken(newRawRefreshToken);
-        var newToken = await _dbContext.RefreshTokens
-            .FirstAsync(x => x.TokenHash == newTokenHash);
-
-        // Thu hồi token cũ (Rotation)
-        existingToken.Revoke(newToken.Id);
+        // Thu hồi token cũ (Rotation) và thêm token mới nguyên tử trong 1 SaveChanges
+        existingToken.Revoke(newRefreshToken.Id);
+        _dbContext.RefreshTokens.Add(newRefreshToken);
         await _dbContext.SaveChangesAsync();
 
         var roles = await _userManager.GetRolesAsync(user);

@@ -50,10 +50,10 @@ internal sealed class ReservationExpiryWorker : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<TicketingDbContext>();
         var now = DateTime.UtcNow;
 
-        // Tìm các lượt giữ chỗ đang Active nhưng đã quá thời hạn 10 phút (ExpiresAt <= now)
+        // Tìm các lượt giữ chỗ đang Active hoặc PaymentPending nhưng đã quá thời hạn 10 phút (ExpiresAt <= now)
         var expiredReservations = await db.Reservations
             .Include(r => r.Items)
-            .Where(r => r.Status == ReservationStatus.Active && r.ExpiresAt <= now)
+            .Where(r => (r.Status == ReservationStatus.Active || r.Status == ReservationStatus.PaymentPending) && r.ExpiresAt <= now)
             .OrderBy(r => r.ExpiresAt)
             .Take(100)
             .ToListAsync(ct);
@@ -63,21 +63,45 @@ internal sealed class ReservationExpiryWorker : BackgroundService
             return;
         }
 
+        var releasedCount = 0;
         foreach (var reservation in expiredReservations)
         {
-            foreach (var item in reservation.Items)
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            try
             {
-                // Hoàn trả tồn kho nguyên tử
-                await db.TicketTypes
-                    .Where(t => t.Id == item.TicketTypeId)
-                    .ExecuteUpdateAsync(s => s.SetProperty(t => t.ReservedQuantity, t => Math.Max(0, t.ReservedQuantity - item.Quantity)), ct);
-            }
+                var rowsUpdated = await db.Reservations
+                    .Where(r => r.Id == reservation.Id && (r.Status == ReservationStatus.Active || r.Status == ReservationStatus.PaymentPending))
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(r => r.Status, ReservationStatus.Released)
+                        .SetProperty(r => r.UpdatedAt, DateTime.UtcNow), ct);
 
-            reservation.Release();
+                if (rowsUpdated == 1)
+                {
+                    foreach (var item in reservation.Items)
+                    {
+                        await db.TicketTypes
+                            .Where(t => t.Id == item.TicketTypeId)
+                            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ReservedQuantity, t => Math.Max(0, t.ReservedQuantity - item.Quantity)), ct);
+                    }
+
+                    await tx.CommitAsync(ct);
+                    releasedCount++;
+                }
+                else
+                {
+                    await tx.RollbackAsync(ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync(ct);
+                _logger.LogWarning(ex, "Lỗi khi xử lý hết hạn cho reservation {ReservationId}", reservation.Id);
+            }
         }
 
-        await db.SaveChangesAsync(ct);
-        _logger.LogInformation("[TV4 - Đồng]: Đã hoàn trả tồn kho cho {Count} lượt giữ chỗ quá hạn 10 phút.",
-            expiredReservations.Count);
+        if (releasedCount > 0)
+        {
+            _logger.LogInformation("[TV4 - Đồng]: Đã hoàn trả tồn kho cho {Count} lượt giữ chỗ quá hạn 10 phút.", releasedCount);
+        }
     }
 }

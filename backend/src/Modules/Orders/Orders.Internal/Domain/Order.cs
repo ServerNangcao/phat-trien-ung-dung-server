@@ -63,11 +63,26 @@ internal sealed class Order : BaseEntity<Guid>
 
     public void AddItem(Guid ticketTypeId, string ticketTypeName, decimal unitPrice, int quantity)
     {
+        if (quantity <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be greater than zero.");
+        }
+
+        if (unitPrice < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(unitPrice), "UnitPrice cannot be negative.");
+        }
+
         _items.Add(OrderItem.Create(Id, ticketTypeId, ticketTypeName, unitPrice, quantity));
     }
 
     public void MarkPaid()
     {
+        if (Status != OrderStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot mark order as paid from status '{Status}'. Only '{OrderStatus.Pending}' orders can be marked as paid.");
+        }
+
         Status = OrderStatus.Paid;
         PaidAt = DateTime.UtcNow;
         UpdatedAt = DateTime.UtcNow;
@@ -75,18 +90,33 @@ internal sealed class Order : BaseEntity<Guid>
 
     public void MarkExpired()
     {
+        if (Status != OrderStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot mark order as expired from status '{Status}'. Only '{OrderStatus.Pending}' orders can be marked as expired.");
+        }
+
         Status = OrderStatus.Expired;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void Cancel()
     {
+        if (Status != OrderStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot cancel order from status '{Status}'. Only '{OrderStatus.Pending}' orders can be cancelled.");
+        }
+
         Status = OrderStatus.Cancelled;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public void MarkPaidAfterExpiry()
     {
+        if (Status != OrderStatus.Expired)
+        {
+            throw new InvalidOperationException($"Cannot mark order as paid after expiry from status '{Status}'. Only '{OrderStatus.Expired}' orders can transition to this state.");
+        }
+
         Status = OrderStatus.PaidAfterExpiry;
         PaidAt = DateTime.UtcNow;
         UpdatedAt = DateTime.UtcNow;
@@ -94,6 +124,11 @@ internal sealed class Order : BaseEntity<Guid>
 
     public void MarkRefunded()
     {
+        if (Status != OrderStatus.Paid && Status != OrderStatus.PaidAfterExpiry)
+        {
+            throw new InvalidOperationException($"Cannot refund order from status '{Status}'. Only '{OrderStatus.Paid}' or '{OrderStatus.PaidAfterExpiry}' orders can be refunded.");
+        }
+
         Status = OrderStatus.Refunded;
         UpdatedAt = DateTime.UtcNow;
     }

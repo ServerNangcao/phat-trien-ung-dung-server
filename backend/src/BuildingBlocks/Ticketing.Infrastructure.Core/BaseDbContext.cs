@@ -84,4 +84,25 @@ public abstract class BaseDbContext : DbContext
 
         return true;
     }
+
+    /// <summary>
+    /// Kiểm tra ngoại lệ DbUpdateException có phải do vi phạm ràng buộc Unique hay không.
+    /// Hỗ trợ mã lỗi 23505 trên PostgreSQL và chuỗi lỗi "UNIQUE constraint failed" trên SQLite.
+    /// </summary>
+    public static bool IsUniqueConstraintViolation(DbUpdateException ex)
+    {
+        if (ex.InnerException is Npgsql.PostgresException pgEx)
+        {
+            return pgEx.SqlState == Npgsql.PostgresErrorCodes.UniqueViolation;
+        }
+
+        var innerType = ex.InnerException?.GetType().Name;
+        if (innerType == "SqliteException")
+        {
+            var message = ex.InnerException?.Message ?? string.Empty;
+            return message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
 }

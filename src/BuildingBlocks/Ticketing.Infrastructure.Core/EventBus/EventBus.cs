@@ -8,7 +8,6 @@ public sealed class EventBus : IEventBus
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<EventBus> _logger;
     private readonly HashSet<Type> _registeredTypes = new();
-    private readonly List<(Type EventType, Delegate Handler)> _handlers = new();
 
     public EventBus(IServiceProvider serviceProvider, ILogger<EventBus> logger)
     {
@@ -39,6 +38,7 @@ public sealed class EventBus : IEventBus
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to handle event {EventType}", eventType.Name);
+                throw;
             }
         }
     }
@@ -59,6 +59,7 @@ public sealed class EventBus : IEventBus
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to handle event {EventType}", eventType.Name);
+                throw;
             }
         }
     }

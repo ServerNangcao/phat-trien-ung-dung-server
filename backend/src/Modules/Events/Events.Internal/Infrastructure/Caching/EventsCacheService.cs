@@ -105,7 +105,7 @@ internal sealed class EventsCacheService(
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromDays(7)
             };
-            tasks.Add(cache.SetStringAsync("events:list:version", DateTime.UtcNow.Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture), versionOptions, cancellationToken));
+            tasks.Add(cache.SetStringAsync("events:list:version", Guid.NewGuid().ToString("N"), versionOptions, cancellationToken));
 
             await Task.WhenAll(tasks);
             logger.LogInformation("Đã invalidate cache cho sự kiện {EventId} (slug: {Slug})", eventId, slug);

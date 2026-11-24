@@ -44,8 +44,6 @@ internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
                 $"Page phải >= 1, PageSize phải từ 1 đến {MaxPageSize}.");
 
         var q = db.Events
-            .Include(e => e.Category)
-            .Include(e => e.Venue)
             .Where(e => e.OrganizerId == query.OrganizerId)
             .AsQueryable();
 
@@ -56,7 +54,11 @@ internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
 
         if (!string.IsNullOrWhiteSpace(query.Search))
         {
-            q = q.Where(e => EF.Functions.ILike(e.Title, $"%{query.Search}%") || EF.Functions.ILike(e.Slug, $"%{query.Search}%"));
+            var escapedSearch = query.Search
+                .Replace(@"\", @"\\")
+                .Replace("%", @"\%")
+                .Replace("_", @"\_");
+            q = q.Where(e => EF.Functions.ILike(e.Title, $"%{escapedSearch}%") || EF.Functions.ILike(e.Slug, $"%{escapedSearch}%"));
         }
 
         var totalCount = await q.CountAsync(cancellationToken);

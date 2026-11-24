@@ -42,6 +42,11 @@ internal sealed class Payment : BaseEntity<Guid>
 
     public void MarkSucceeded(string? providerTransactionNo, string? rawPayload)
     {
+        if (Status != PaymentStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot mark payment as succeeded from status '{Status}'. Only '{PaymentStatus.Pending}' payments can be succeeded.");
+        }
+
         Status = PaymentStatus.Succeeded;
         ProviderTransactionNo = providerTransactionNo;
         RawPayload = rawPayload;
@@ -51,6 +56,11 @@ internal sealed class Payment : BaseEntity<Guid>
 
     public void MarkFailed(string? rawPayload)
     {
+        if (Status != PaymentStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot mark payment as failed from status '{Status}'. Only '{PaymentStatus.Pending}' payments can be failed.");
+        }
+
         Status = PaymentStatus.Failed;
         RawPayload = rawPayload;
         UpdatedAt = DateTime.UtcNow;

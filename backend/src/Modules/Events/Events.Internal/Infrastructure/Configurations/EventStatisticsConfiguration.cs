@@ -29,7 +29,7 @@ internal sealed class EventStatisticsConfiguration : IEntityTypeConfiguration<Ev
             .HasDefaultValue(0);
 
         builder.Property(x => x.TiersBreakdownJson)
-            .HasMaxLength(4000);
+            .HasColumnType("jsonb");
 
         builder.Property(x => x.LastCalculatedAt)
             .IsRequired();

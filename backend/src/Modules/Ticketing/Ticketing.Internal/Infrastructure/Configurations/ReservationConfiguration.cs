@@ -48,6 +48,8 @@ internal sealed class ReservationConfiguration : IEntityTypeConfiguration<Reserv
             .HasFilter("\"Status\" IN ('Active', 'PaymentPending')");
 
         builder.HasIndex(x => new { x.CustomerId, x.IdempotencyKey })
+            .IsUnique()
+            .HasFilter("\"IdempotencyKey\" IS NOT NULL")
             .HasDatabaseName("ix_reservations_customer_idempotency");
     }
 }

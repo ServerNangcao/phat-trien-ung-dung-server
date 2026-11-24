@@ -58,7 +58,10 @@ public sealed class ProcessRefundCommandHandler : IRequestHandler<ProcessRefundC
             refund.MarkAsRejected(now, request.AdminNote);
         }
 
-        await _unitOfWork.CommitAsync(cancellationToken);
+        var commitResult = await _unitOfWork.CommitAsync(cancellationToken);
+        if (commitResult.IsFailure)
+            return Result<Guid>.Failure(commitResult.Error);
+
         return Result<Guid>.Success(refund.Id);
     }
 }

@@ -2,6 +2,7 @@ using Events.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Ticketing.Contracts;
+using Ticketing.Infrastructure.Core;
 using Ticketing.Internal.Domain;
 using Ticketing.Internal.Infrastructure;
 
@@ -93,45 +94,81 @@ internal sealed class TicketingService : ITicketingModuleApi
         }
 
         // 2. Trừ kho nguyên tử (Atomic Update) - Đảm bảo chỉ trừ khi còn đủ vé sẵn có
-        var rowsAffected = await _db.TicketTypes
-            .Where(t => t.Id == ticketTypeId &&
-                        t.EventId == eventId &&
-                        (t.TotalQuantity - t.ReservedQuantity - t.SoldQuantity) >= quantity &&
-                        t.MaxPerOrder >= quantity &&
-                        t.IsActive)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ReservedQuantity, t => t.ReservedQuantity + quantity), cancellationToken);
-
-        if (rowsAffected == 0)
+        await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
+        try
         {
-            throw new InvalidOperationException("Không đủ vé hoặc vé đã hết.");
+            var rowsAffected = await _db.TicketTypes
+                .Where(t => t.Id == ticketTypeId &&
+                            t.EventId == eventId &&
+                            (t.TotalQuantity - t.ReservedQuantity - t.SoldQuantity) >= quantity &&
+                            t.MaxPerOrder >= quantity &&
+                            t.IsActive)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.ReservedQuantity, t => t.ReservedQuantity + quantity), cancellationToken);
+
+            if (rowsAffected == 0)
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw new InvalidOperationException("Không đủ vé hoặc vé đã hết.");
+            }
+
+            var ticketType = await _db.TicketTypes
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == ticketTypeId, cancellationToken);
+
+            var price = ticketType?.Price ?? 0;
+
+            // 3. Thiết lập TTL 10 phút cho lượt giữ vé (Reservation 10p)
+            var expiresAt = DateTime.UtcNow.AddMinutes(10);
+            var reservation = Reservation.Create(customerId, eventId, expiresAt, idempotencyKey);
+            reservation.AddItem(ticketTypeId, quantity);
+
+            _db.Reservations.Add(reservation);
+            await _db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+
+            _logger.LogInformation("Đã giữ thành công {Quantity} vé loại {TypeId} cho khách {CustomerId}, hết hạn lúc {ExpiresAt}",
+                quantity, ticketTypeId, customerId, expiresAt);
+
+            return new ReservationDto(
+                reservation.Id,
+                reservation.EventId,
+                ticketTypeId,
+                reservation.CustomerId,
+                quantity,
+                price,
+                reservation.ExpiresAt,
+                reservation.Status);
         }
+        catch (DbUpdateException ex) when (BaseDbContext.IsUniqueConstraintViolation(ex) && !string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            await tx.RollbackAsync(cancellationToken);
 
-        var ticketType = await _db.TicketTypes
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == ticketTypeId, cancellationToken);
+            var existingReservation = await _db.Reservations
+                .Include(r => r.Items)
+                .ThenInclude(i => i.TicketType)
+                .FirstOrDefaultAsync(r => r.CustomerId == customerId && r.IdempotencyKey == idempotencyKey, cancellationToken);
 
-        var price = ticketType?.Price ?? 0;
+            if (existingReservation is not null)
+            {
+                var existingItem = existingReservation.Items.FirstOrDefault();
+                return new ReservationDto(
+                    existingReservation.Id,
+                    existingReservation.EventId,
+                    existingItem?.TicketTypeId ?? ticketTypeId,
+                    existingReservation.CustomerId,
+                    existingItem?.Quantity ?? quantity,
+                    existingItem?.TicketType?.Price ?? 0,
+                    existingReservation.ExpiresAt,
+                    existingReservation.Status);
+            }
 
-        // 3. Thiết lập TTL 10 phút cho lượt giữ vé (Reservation 10p)
-        var expiresAt = DateTime.UtcNow.AddMinutes(10);
-        var reservation = Reservation.Create(customerId, eventId, expiresAt, idempotencyKey);
-        reservation.AddItem(ticketTypeId, quantity);
-
-        _db.Reservations.Add(reservation);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Đã giữ thành công {Quantity} vé loại {TypeId} cho khách {CustomerId}, hết hạn lúc {ExpiresAt}",
-            quantity, ticketTypeId, customerId, expiresAt);
-
-        return new ReservationDto(
-            reservation.Id,
-            reservation.EventId,
-            ticketTypeId,
-            reservation.CustomerId,
-            quantity,
-            price,
-            reservation.ExpiresAt,
-            reservation.Status);
+            throw;
+        }
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     /// <summary>
@@ -195,22 +232,42 @@ internal sealed class TicketingService : ITicketingModuleApi
             .Include(r => r.Items)
             .FirstOrDefaultAsync(r => r.Id == id && r.CustomerId == customerId, cancellationToken);
 
-        if (reservation is null || reservation.Status == ReservationStatus.Released)
+        if (reservation is null || reservation.Status == ReservationStatus.Confirmed || reservation.Status == ReservationStatus.Released)
         {
             return;
         }
 
-        foreach (var item in reservation.Items)
+        await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
+        try
         {
-            await _db.TicketTypes
-                .Where(t => t.Id == item.TicketTypeId)
-                .ExecuteUpdateAsync(s => s.SetProperty(t => t.ReservedQuantity, t => Math.Max(0, t.ReservedQuantity - item.Quantity)), cancellationToken);
+            var rowsUpdated = await _db.Reservations
+                .Where(r => r.Id == id && r.CustomerId == customerId && (r.Status == ReservationStatus.Active || r.Status == ReservationStatus.PaymentPending))
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(r => r.Status, ReservationStatus.Released)
+                    .SetProperty(r => r.UpdatedAt, DateTime.UtcNow), cancellationToken);
+
+            if (rowsUpdated == 1)
+            {
+                foreach (var item in reservation.Items)
+                {
+                    await _db.TicketTypes
+                        .Where(t => t.Id == item.TicketTypeId)
+                        .ExecuteUpdateAsync(s => s.SetProperty(t => t.ReservedQuantity, t => Math.Max(0, t.ReservedQuantity - item.Quantity)), cancellationToken);
+                }
+
+                await tx.CommitAsync(cancellationToken);
+                _logger.LogInformation("Đã hủy và hoàn trả tồn kho cho lượt giữ vé {ReservationId}", id);
+            }
+            else
+            {
+                await tx.RollbackAsync(cancellationToken);
+            }
         }
-
-        reservation.Release();
-        await _db.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Đã hủy và hoàn trả tồn kho cho lượt giữ vé {ReservationId}", id);
+        catch
+        {
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     /// <summary>
@@ -290,6 +347,7 @@ internal sealed class TicketingService : ITicketingModuleApi
                 OrderId = t.OrderId,
                 TicketTypeId = t.TicketTypeId,
                 CustomerId = t.CustomerId,
+                CustomerEmail = t.CustomerEmail,
                 TicketCode = t.Code,
                 TicketTypeName = t.TicketType.Name,
                 Status = t.Status,
@@ -321,6 +379,7 @@ internal sealed class TicketingService : ITicketingModuleApi
                 OrderId = t.OrderId,
                 TicketTypeId = t.TicketTypeId,
                 CustomerId = t.CustomerId,
+                CustomerEmail = t.CustomerEmail,
                 TicketCode = t.Code,
                 TicketTypeName = t.TicketType.Name,
                 Status = t.Status,
@@ -380,80 +439,91 @@ internal sealed class TicketingService : ITicketingModuleApi
         int quantity,
         CancellationToken cancellationToken = default)
     {
-        var tickets = new List<Ticket>();
-        var ticketDtos = new List<TicketDto>();
-        var issuedTicketsForEvent = new List<IssuedTicketDto>();
-
-        for (var i = 1; i <= quantity; i++)
+        await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
+        try
         {
-            var ticketId = Guid.CreateVersion7();
-            var code = $"TK-{ticketId:N}".ToUpperInvariant();
-            var qrSignature = _signer.Sign(ticketId, eventId);
+            var tickets = new List<Ticket>();
+            var ticketDtos = new List<TicketDto>();
+            var issuedTicketsForEvent = new List<IssuedTicketDto>();
 
-            var ticket = Ticket.Issue(
-                orderId,
-                ticketTypeId,
-                eventId,
-                customerId,
-                i,
-                code,
-                qrSignature,
-                customerEmail,
-                ticketId);
-
-            tickets.Add(ticket);
-
-            ticketDtos.Add(new TicketDto
+            for (var i = 1; i <= quantity; i++)
             {
-                Id = ticket.Id,
-                EventId = ticket.EventId,
-                OrderId = ticket.OrderId,
-                TicketTypeId = ticket.TicketTypeId,
-                CustomerId = ticket.CustomerId,
-                TicketCode = ticket.Code,
-                TicketTypeName = ticketTypeName,
+                var ticketId = Guid.CreateVersion7();
+                var code = $"TK-{ticketId:N}".ToUpperInvariant();
+                var qrSignature = _signer.Sign(ticketId, eventId);
+
+                var ticket = Ticket.Issue(
+                    orderId,
+                    ticketTypeId,
+                    eventId,
+                    customerId,
+                    i,
+                    code,
+                    qrSignature,
+                    customerEmail,
+                    ticketId);
+
+                tickets.Add(ticket);
+
+                ticketDtos.Add(new TicketDto
+                {
+                    Id = ticket.Id,
+                    EventId = ticket.EventId,
+                    OrderId = ticket.OrderId,
+                    TicketTypeId = ticket.TicketTypeId,
+                    CustomerId = ticket.CustomerId,
+                    CustomerEmail = customerEmail,
+                    TicketCode = ticket.Code,
+                    TicketTypeName = ticketTypeName,
+                    EventTitle = eventTitle,
+                    Status = ticket.Status,
+                    QrPayload = qrSignature,
+                    CreatedAt = ticket.CreatedAt
+                });
+
+                issuedTicketsForEvent.Add(new IssuedTicketDto
+                {
+                    TicketId = ticket.Id,
+                    TicketCode = code,
+                    TicketTypeName = ticketTypeName,
+                    Price = unitPrice,
+                    QrPayload = qrSignature
+                });
+            }
+
+            _db.Tickets.AddRange(tickets);
+
+            // Chuyển số lượng từ ReservedQuantity sang SoldQuantity
+            await _db.TicketTypes
+                .Where(t => t.Id == ticketTypeId)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(t => t.ReservedQuantity, t => Math.Max(0, t.ReservedQuantity - quantity))
+                    .SetProperty(t => t.SoldQuantity, t => t.SoldQuantity + quantity), cancellationToken);
+
+            // Bắn Integration Event TicketIssued vào Outbox để Notifications gửi email vé kèm mã QR
+            _db.AddOutboxMessage(new TicketIssuedIntegrationEvent
+            {
+                OrderId = orderId,
+                TargetEventId = eventId,
                 EventTitle = eventTitle,
-                Status = ticket.Status,
-                QrPayload = qrSignature,
-                CreatedAt = ticket.CreatedAt
+                CustomerEmail = customerEmail,
+                CustomerName = customerName,
+                Tickets = issuedTicketsForEvent
             });
 
-            issuedTicketsForEvent.Add(new IssuedTicketDto
-            {
-                TicketId = ticket.Id,
-                TicketCode = code,
-                TicketTypeName = ticketTypeName,
-                Price = unitPrice,
-                QrPayload = qrSignature
-            });
+            await _db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+
+            _logger.LogInformation("Đã phát hành {Quantity} vé cho đơn hàng {OrderId}, khách hàng {Email}",
+                quantity, orderId, customerEmail);
+
+            return ticketDtos;
         }
-
-        _db.Tickets.AddRange(tickets);
-
-        // Chuyển số lượng từ ReservedQuantity sang SoldQuantity
-        await _db.TicketTypes
-            .Where(t => t.Id == ticketTypeId)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(t => t.ReservedQuantity, t => Math.Max(0, t.ReservedQuantity - quantity))
-                .SetProperty(t => t.SoldQuantity, t => t.SoldQuantity + quantity), cancellationToken);
-
-        // Bắn Integration Event TicketIssued vào Outbox để Notifications gửi email vé kèm mã QR
-        _db.AddOutboxMessage(new TicketIssuedIntegrationEvent
+        catch
         {
-            OrderId = orderId,
-            TargetEventId = eventId,
-            EventTitle = eventTitle,
-            CustomerEmail = customerEmail,
-            CustomerName = customerName,
-            Tickets = issuedTicketsForEvent
-        });
-
-        await _db.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Đã phát hành {Quantity} vé cho đơn hàng {OrderId}, khách hàng {Email}",
-            quantity, orderId, customerEmail);
-
-        return ticketDtos;
+            await tx.RollbackAsync(cancellationToken);
+            throw;
+        }
     }
 
     /// <summary>
@@ -464,6 +534,7 @@ internal sealed class TicketingService : ITicketingModuleApi
         CancellationToken cancellationToken = default)
     {
         var ticketTypes = await _db.TicketTypes
+            .AsNoTracking()
             .Where(tt => tt.EventId == eventId)
             .OrderBy(tt => tt.Price)
             .Select(tt => new TicketTypeSummaryDto(
@@ -473,7 +544,7 @@ internal sealed class TicketingService : ITicketingModuleApi
                 tt.Price,
                 tt.TotalQuantity,
                 tt.SoldQuantity,
-                tt.AvailableQuantity))
+                Math.Max(0, tt.TotalQuantity - tt.ReservedQuantity - tt.SoldQuantity)))
             .ToListAsync(cancellationToken);
 
         return ticketTypes;
