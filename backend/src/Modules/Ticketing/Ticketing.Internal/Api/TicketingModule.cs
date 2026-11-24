@@ -374,6 +374,7 @@ public static class TicketingModule
             return new
             {
                 id = t.Id,
+                orderId = t.OrderId,
                 eventId = t.EventId,
                 eventTitle = !string.IsNullOrWhiteSpace(ev?.Title) ? ev.Title : (!string.IsNullOrWhiteSpace(t.EventTitle) ? t.EventTitle : "Vé tham gia sự kiện"),
                 image = !string.IsNullOrWhiteSpace(ev?.CoverImageUrl)
