@@ -23,8 +23,19 @@ public static class NotificationsModule
             schema: NotificationsDbContext.SchemaName,
             configuration: configuration);
 
-        // 2. Dịch vụ gửi email
-        services.AddScoped<IEmailService, EmailService>();
+        // 2. Cấu hình & dịch vụ gửi email (SMTP MailKit khi Smtp:Enabled=true, ngược lại log console)
+        services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
+        var smtpOptions = configuration.GetSection(SmtpOptions.SectionName).Get<SmtpOptions>() ?? new SmtpOptions();
+        if (smtpOptions.IsConfigured)
+        {
+            services.AddScoped<IEmailService, SmtpEmailService>();
+        }
+        else
+        {
+            services.AddScoped<IEmailService, EmailService>();
+        }
+
+        services.AddHostedService<EmailRetryWorker>();
 
         // 3. Đăng ký Integration Event Handler (Điểm 2: lắng nghe TicketIssued, Điểm 4: Outbox/Inbox)
         services.RegisterIntegrationEventHandler<TicketIssuedIntegrationEvent, TicketIssuedEventHandler>();

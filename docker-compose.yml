@@ -97,6 +97,14 @@ services:
       S3__SecretKey: ${S3__SecretKey:-minioadmin}
       S3__BucketName: ${S3__BucketName:-ticketing}
       S3__ForcePathStyle: "true"
+      Smtp__Enabled: ${SMTP_ENABLED:-false}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__Username: ${SMTP_USERNAME:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+      Smtp__FromEmail: ${SMTP_FROM_EMAIL:-no-reply@sukienbanve.id.vn}
+      Smtp__FromName: ${SMTP_FROM_NAME:-Ticketing Platform}
+      Smtp__UseStartTls: ${SMTP_USE_STARTTLS:-true}
     depends_on:
       ticketing-db:
         condition: service_healthy

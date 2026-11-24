@@ -48,13 +48,23 @@ internal sealed class TicketIssuedEventHandler : IIntegrationEventHandler<Ticket
             return;
         }
 
-        // 2. Soạn nội dung email vé điện tử
+        if (string.IsNullOrWhiteSpace(integrationEvent.CustomerEmail))
+        {
+            _logger.LogWarning(
+                "TicketIssuedIntegrationEvent {EventId} for order {OrderId} has empty CustomerEmail. Skipping email.",
+                integrationEvent.EventId,
+                integrationEvent.OrderId);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        // 2. Soạn nội dung email vé điện tử HTML kèm ảnh QR
         var subject = $"[Ticketing Platform] Vé điện tử sự kiện: {integrationEvent.EventTitle}";
-        var body = BuildEmailBody(integrationEvent);
+        var body = TicketEmailRenderer.RenderTicketIssuedHtml(integrationEvent);
 
         var notification = EmailNotification.Create(
             integrationEvent.OrderId,
-            integrationEvent.CustomerEmail,
+            integrationEvent.CustomerEmail.Trim(),
             subject,
             body);
 
@@ -62,7 +72,7 @@ internal sealed class TicketIssuedEventHandler : IIntegrationEventHandler<Ticket
         {
             // 3. Gửi email
             await _emailService.SendEmailAsync(
-                integrationEvent.CustomerEmail,
+                notification.Recipient,
                 subject,
                 body,
                 cancellationToken);
@@ -72,32 +82,16 @@ internal sealed class TicketIssuedEventHandler : IIntegrationEventHandler<Ticket
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send ticket email to {Email}", integrationEvent.CustomerEmail);
-            notification.MarkFailed(ex.Message, DateTime.UtcNow.AddMinutes(5));
+            _logger.LogError(ex, "Failed to send ticket email to {Email} for order {OrderId}",
+                notification.Recipient, integrationEvent.OrderId);
+            notification.MarkFailed(
+                ex.Message[..Math.Min(ex.Message.Length, 4000)],
+                DateTime.UtcNow.AddMinutes(1));
         }
 
         _dbContext.EmailNotifications.Add(notification);
 
         // 5. Lưu InboxMessage và EmailNotification cùng transaction
         await _dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    private static string BuildEmailBody(TicketIssuedIntegrationEvent @event)
-    {
-        var ticketList = string.Join("\n", @event.Tickets.Select(t =>
-            $"- Hạng vé: {t.TicketTypeName} | Mã vé: {t.TicketCode} | Giá: {t.Price:N0} VND | Mã QR: {t.QrPayload}"));
-
-        return $"""
-            Xin chào {@event.CustomerName},
-
-            Đơn hàng {@event.OrderId} của bạn đã được thanh toán thành công!
-            Dưới đây là thông tin vé điện tử của bạn cho sự kiện: {@event.EventTitle}
-
-            {ticketList}
-
-            Vui lòng mang theo mã QR này tại cổng soát vé để check-in.
-            Trân trọng,
-            Đội ngũ Ticketing Platform
-            """;
     }
 }

@@ -1,6 +1,9 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using MimeKit;
 using Notifications.Internal.Application;
 using Notifications.Internal.Domain;
 using Notifications.Internal.Infrastructure;
@@ -95,6 +98,201 @@ public class TicketNotificationTests : IDisposable
         {
             var emailCount = await context.EmailNotifications.CountAsync();
             Assert.Equal(1, emailCount);
+        }
+    }
+
+    [Fact]
+    public void TicketEmailRenderer_Encodes_Html_And_Embeds_Valid_Qr_Png()
+    {
+        var integrationEvent = new TicketIssuedIntegrationEvent
+        {
+            OrderId = Guid.NewGuid(),
+            TargetEventId = Guid.NewGuid(),
+            EventTitle = "Show <script>alert(1)</script>",
+            CustomerEmail = "buyer@example.com",
+            CustomerName = "<b>Customer</b>",
+            Tickets =
+            [
+                new IssuedTicketDto
+                {
+                    TicketId = Guid.NewGuid(),
+                    TicketCode = "TCK-QR-101",
+                    TicketTypeName = "Standard",
+                    Price = 250000m,
+                    QrPayload = "PAYLOAD-TEST-101"
+                }
+            ]
+        };
+
+        var html = TicketEmailRenderer.RenderTicketIssuedHtml(integrationEvent);
+
+        Assert.DoesNotContain("<script>", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<b>Customer</b>", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("&lt;script&gt;alert(1)&lt;/script&gt;", html);
+        Assert.Contains("&lt;b&gt;Customer&lt;/b&gt;", html);
+        Assert.Contains("TCK-QR-101", html);
+
+        const string marker = "data:image/png;base64,";
+        var startIdx = html.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(startIdx >= 0);
+        startIdx += marker.Length;
+        var endIdx = html.IndexOf('"', startIdx);
+        var base64 = html[startIdx..endIdx];
+        var pngBytes = Convert.FromBase64String(base64);
+
+        // PNG magic bytes: 89 50 4E 47
+        Assert.True(pngBytes.Length > 8);
+        Assert.Equal(0x89, pngBytes[0]);
+        Assert.Equal(0x50, pngBytes[1]);
+        Assert.Equal(0x4E, pngBytes[2]);
+        Assert.Equal(0x47, pngBytes[3]);
+    }
+
+    [Fact]
+    public void SmtpEmailService_BuildMimeMessage_Converts_DataUri_To_Inline_Cid_LinkedResource()
+    {
+        var options = new SmtpOptions
+        {
+            FromEmail = "no-reply@sukienbanve.id.vn",
+            FromName = "Ticketing Platform"
+        };
+
+        var integrationEvent = new TicketIssuedIntegrationEvent
+        {
+            OrderId = Guid.NewGuid(),
+            TargetEventId = Guid.NewGuid(),
+            EventTitle = "Midnight Jazz",
+            CustomerEmail = "customer@example.com",
+            CustomerName = "Minh Anh",
+            Tickets =
+            [
+                new IssuedTicketDto
+                {
+                    TicketId = Guid.NewGuid(),
+                    TicketCode = "TCK-MIME-01",
+                    TicketTypeName = "VIP",
+                    Price = 590000m,
+                    QrPayload = "QR-MIME-01"
+                }
+            ]
+        };
+
+        var html = TicketEmailRenderer.RenderTicketIssuedHtml(integrationEvent);
+        var message = SmtpEmailService.BuildMimeMessage(options, "customer@example.com", "Vé của bạn", html);
+
+        Assert.Equal("Vé của bạn", message.Subject);
+        Assert.Contains(message.From.Mailboxes, m => m.Address == "no-reply@sukienbanve.id.vn");
+        Assert.Contains(message.To.Mailboxes, m => m.Address == "customer@example.com");
+
+        var allParts = message.BodyParts.ToList();
+        var htmlPart = allParts.OfType<TextPart>().FirstOrDefault(p => p.IsHtml);
+        var imagePart = allParts.OfType<MimePart>().FirstOrDefault(p => p.ContentType.IsMimeType("image", "png"));
+
+        Assert.NotNull(htmlPart);
+        Assert.NotNull(imagePart);
+        Assert.False(string.IsNullOrWhiteSpace(imagePart!.ContentId));
+        Assert.Equal(ContentDisposition.Inline, imagePart.ContentDisposition?.Disposition);
+        Assert.Contains($"cid:{imagePart.ContentId}", htmlPart!.Text);
+        Assert.DoesNotContain("data:image/png;base64,", htmlPart.Text);
+    }
+
+    [Fact]
+    public async Task EmailRetryWorker_Retries_Failed_Notification_And_Marks_Sent()
+    {
+        var fakeEmail = new FlakyEmailService(failuresBeforeSuccess: 1);
+        var smtpOptions = Options.Create(new SmtpOptions
+        {
+            Enabled = true,
+            Host = "localhost",
+            EnableRetryWorker = false,
+            MaxRetryAttempts = 3
+        });
+
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new NotificationsDbContext(_options));
+        services.AddSingleton<IEmailService>(fakeEmail);
+        using var provider = services.BuildServiceProvider();
+
+        var integrationEvent = new TicketIssuedIntegrationEvent
+        {
+            OrderId = Guid.NewGuid(),
+            TargetEventId = Guid.NewGuid(),
+            EventTitle = "Saigon Indie Live",
+            CustomerEmail = "retry@example.com",
+            CustomerName = "Hoàng Nam",
+            Tickets =
+            [
+                new IssuedTicketDto
+                {
+                    TicketId = Guid.NewGuid(),
+                    TicketCode = "TCK-RETRY-01",
+                    TicketTypeName = "Standard",
+                    Price = 290000m,
+                    QrPayload = "QR-RETRY-01"
+                }
+            ]
+        };
+
+        // Lần 1: Gửi thất bại -> lưu trạng thái Failed
+        using (var context = new NotificationsDbContext(_options))
+        {
+            var handler = new TicketIssuedEventHandler(
+                context,
+                fakeEmail,
+                NullLogger<TicketIssuedEventHandler>.Instance);
+            await handler.HandleAsync(integrationEvent, CancellationToken.None);
+        }
+
+        Guid notificationId;
+        using (var context = new NotificationsDbContext(_options))
+        {
+            var saved = await context.EmailNotifications.SingleAsync();
+            notificationId = saved.Id;
+            Assert.Equal(EmailNotificationStatus.Failed, saved.Status);
+            Assert.Equal(1, saved.AttemptCount);
+            Assert.NotNull(saved.NextRetryAt);
+
+            // Tua NextRetryAt về quá khứ để đủ điều kiện retry ngay trong test
+            saved.MarkFailed(saved.LastError ?? "transient", DateTime.UtcNow.AddSeconds(-5));
+            await context.SaveChangesAsync();
+        }
+
+        // Lần 2: Worker quét và gửi lại thành công
+        var worker = new EmailRetryWorker(
+            provider.GetRequiredService<IServiceScopeFactory>(),
+            smtpOptions,
+            NullLogger<EmailRetryWorker>.Instance);
+
+        var processedCount = await worker.ProcessPendingRetriesAsync(CancellationToken.None);
+        Assert.Equal(1, processedCount);
+
+        using (var context = new NotificationsDbContext(_options))
+        {
+            var updated = await context.EmailNotifications.SingleAsync(x => x.Id == notificationId);
+            Assert.Equal(EmailNotificationStatus.Sent, updated.Status);
+            Assert.NotNull(updated.SentAt);
+            Assert.Null(updated.LastError);
+            Assert.Null(updated.NextRetryAt);
+        }
+    }
+
+    private sealed class FlakyEmailService(int failuresBeforeSuccess) : IEmailService
+    {
+        private int _calls;
+
+        public Task SendEmailAsync(
+            string toEmail,
+            string subject,
+            string body,
+            CancellationToken cancellationToken = default)
+        {
+            _calls++;
+            if (_calls <= failuresBeforeSuccess)
+            {
+                throw new InvalidOperationException("Simulated transient SMTP error.");
+            }
+
+            return Task.CompletedTask;
         }
     }
 }
