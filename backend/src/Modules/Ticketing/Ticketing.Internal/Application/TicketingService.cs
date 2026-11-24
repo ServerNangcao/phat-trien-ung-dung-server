@@ -552,4 +552,93 @@ internal sealed class TicketingService : ITicketingModuleApi
 
         return ticketTypes;
     }
+
+    /// <summary>
+    /// Hủy toàn bộ vé hợp lệ của đơn hàng khi hoàn tiền và hoàn trả số lượng đã bán về kho.
+    /// </summary>
+    public async Task<int> CancelTicketsForOrderAsync(
+        Guid orderId,
+        CancellationToken cancellationToken = default)
+    {
+        var tickets = await _db.Tickets
+            .Where(t => t.OrderId == orderId)
+            .ToListAsync(cancellationToken);
+
+        if (tickets.Count == 0)
+        {
+            return 0;
+        }
+
+        if (tickets.Any(t => t.Status == TicketStatus.Used || t.UsedAt.HasValue))
+        {
+            throw new InvalidOperationException("Không thể hoàn tiền vì đơn hàng đã có vé được check-in.");
+        }
+
+        var validTickets = tickets
+            .Where(t => t.Status == TicketStatus.Valid)
+            .ToList();
+
+        if (validTickets.Count == 0)
+        {
+            return 0;
+        }
+
+        var cancelledByType = validTickets
+            .GroupBy(t => t.TicketTypeId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        foreach (var ticket in validTickets)
+        {
+            ticket.Cancel();
+        }
+
+        if (_db.Database.IsRelational())
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                await _db.SaveChangesAsync(cancellationToken);
+
+                foreach (var (ticketTypeId, count) in cancelledByType)
+                {
+                    await _db.TicketTypes
+                        .Where(tt => tt.Id == ticketTypeId)
+                        .ExecuteUpdateAsync(s => s
+                            .SetProperty(t => t.SoldQuantity, t => Math.Max(0, t.SoldQuantity - count))
+                            .SetProperty(t => t.UpdatedAt, DateTime.UtcNow), cancellationToken);
+                }
+
+                await tx.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await tx.RollbackAsync(cancellationToken);
+                throw;
+            }
+        }
+        else
+        {
+            var typeIds = cancelledByType.Keys.ToList();
+            var ticketTypes = await _db.TicketTypes
+                .Where(tt => typeIds.Contains(tt.Id))
+                .ToListAsync(cancellationToken);
+
+            foreach (var ticketType in ticketTypes)
+            {
+                if (cancelledByType.TryGetValue(ticketType.Id, out var count))
+                {
+                    ticketType.ReleaseSold(count);
+                }
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "Đã hủy {CancelledCount} vé của đơn hàng {OrderId} và hoàn trả tồn kho",
+            validTickets.Count,
+            orderId);
+
+        return validTickets.Count;
+    }
 }

@@ -1,6 +1,6 @@
 import { QRCodeSVG } from "qrcode.react";
-import { ArrowDown, CalendarDays, MapPin, Ticket } from "lucide-react";
-import type { PurchasedTicket } from "../../../api/types";
+import { ArrowDown, CalendarDays, MapPin, RotateCcw, Ticket } from "lucide-react";
+import type { MyRefundRequestItem, PurchasedTicket } from "../../../api/types";
 
 const formatDate = (date: string) =>
   new Intl.DateTimeFormat("vi-VN", {
@@ -11,9 +11,11 @@ const formatDate = (date: string) =>
 
 interface DigitalTicketCardProps {
   ticket: PurchasedTicket;
+  refundRequest?: MyRefundRequestItem;
+  onRequestRefund?: (ticket: PurchasedTicket) => void;
 }
 
-export function DigitalTicketCard({ ticket }: DigitalTicketCardProps) {
+export function DigitalTicketCard({ ticket, refundRequest, onRequestRefund }: DigitalTicketCardProps) {
   const statusLabel =
     ticket.status === "used"
       ? "Đã sử dụng"
@@ -81,9 +83,37 @@ export function DigitalTicketCard({ ticket }: DigitalTicketCardProps) {
         <div className="ticket-owner">
           Vé dành cho <b>{ticket.holderName}</b>
         </div>
-        <button type="button" className="download-button" onClick={download}>
-          <ArrowDown size={15} /> Tải vé điện tử
-        </button>
+        <div className="mt-3 flex flex-wrap items-center gap-2.5">
+          {ticket.status !== "cancelled" && (
+            <button type="button" className="download-button !mt-0" onClick={download}>
+              <ArrowDown size={15} /> Tải vé điện tử
+            </button>
+          )}
+          {ticket.status === "valid" && ticket.orderId && onRequestRefund && (
+            refundRequest?.status === "Pending" ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                <RotateCcw size={13} /> Đang chờ duyệt hoàn tiền
+              </span>
+            ) : refundRequest?.status === "Approved" ? (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+                Đã duyệt hoàn tiền
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onRequestRefund(ticket)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white px-3.5 py-2 text-xs font-semibold text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-50 cursor-pointer"
+              >
+                <RotateCcw size={14} /> Yêu cầu hoàn tiền
+              </button>
+            )
+          )}
+        </div>
+        {refundRequest?.status === "Rejected" && ticket.status === "valid" && (
+          <p className="mt-2 text-xs text-rose-700">
+            Yêu cầu hoàn tiền trước đó đã bị từ chối. Bạn có thể gửi lại yêu cầu mới nếu cần.
+          </p>
+        )}
       </div>
       <div className="digital-ticket-qr">
         <QRCodeSVG id={`qr-${ticket.id}`} value={ticket.code} size={126} level="H" includeMargin />

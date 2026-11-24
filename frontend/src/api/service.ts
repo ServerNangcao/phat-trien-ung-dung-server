@@ -14,8 +14,10 @@ import type {
   ManagedEvent,
   ManagedEventStatus,
   ManagedTicketTier,
+  MyRefundRequestItem,
   OrganizerOrderItem,
   PurchasedTicket,
+  RefundRequestItem,
   RegisterRequest,
   Reservation,
   TicketTier,
@@ -200,6 +202,7 @@ export const ticketingApi = {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return rawList.map((t: any) => ({
       id: t.id,
+      orderId: t.orderId,
       eventId: t.eventId,
       eventTitle: t.eventTitle || "Vé tham gia sự kiện",
       image: t.image || "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
@@ -499,6 +502,70 @@ export const ticketingApi = {
         return;
       }
       await apiClient.post(`/api/events/${eventId}/reject`, { reason });
+    },
+  },
+  refunds: {
+    create: async (orderId: string, reason: string): Promise<MyRefundRequestItem> => {
+      if (isDemoMode) {
+        const created = platformDemoApi.createRefund(orderId, reason);
+        return {
+          id: created.id,
+          orderId,
+          orderCode: created.orderCode,
+          amount: created.amount,
+          reason: created.reason,
+          status: created.status,
+          requestedAt: created.requestedAt,
+        };
+      }
+      const { data } = await apiClient.post<MyRefundRequestItem>("/api/refunds", {
+        orderId,
+        reason,
+      });
+      return data;
+    },
+    getMine: async (): Promise<MyRefundRequestItem[]> => {
+      if (isDemoMode) {
+        return platformDemoApi
+          .getRefunds()
+          .filter((r) => Boolean(r.orderId))
+          .map((r) => ({
+            id: r.id,
+            orderId: r.orderId!,
+            orderCode: r.orderCode,
+            amount: r.amount,
+            reason: r.reason,
+            status: r.status,
+            requestedAt: r.requestedAt,
+          }));
+      }
+      const { data } = await apiClient.get<MyRefundRequestItem[]>("/api/refunds/mine");
+      return Array.isArray(data) ? data : [];
+    },
+    getAdminList: async (status?: string): Promise<RefundRequestItem[]> => {
+      if (isDemoMode) {
+        const list = platformDemoApi.getRefunds();
+        if (!status || status === "ALL") return list;
+        return list.filter((item) => item.status === status);
+      }
+      const { data } = await apiClient.get<RefundRequestItem[]>("/api/refunds/admin", {
+        params: status && status !== "ALL" ? { status } : undefined,
+      });
+      return Array.isArray(data) ? data : [];
+    },
+    approve: async (id: string): Promise<void> => {
+      if (isDemoMode) {
+        platformDemoApi.decideRefund(id, "Approved");
+        return;
+      }
+      await apiClient.post(`/api/refunds/${id}/approve`);
+    },
+    reject: async (id: string): Promise<void> => {
+      if (isDemoMode) {
+        platformDemoApi.decideRefund(id, "Rejected");
+        return;
+      }
+      await apiClient.post(`/api/refunds/${id}/reject`);
     },
   },
 };

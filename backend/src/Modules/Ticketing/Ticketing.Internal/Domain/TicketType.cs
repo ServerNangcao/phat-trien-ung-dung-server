@@ -63,5 +63,16 @@ internal sealed class TicketType : BaseEntity<Guid>
         IsActive = true;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    public void ReleaseSold(int quantity)
+    {
+        if (quantity <= 0)
+        {
+            return;
+        }
+
+        SoldQuantity = Math.Max(0, SoldQuantity - quantity);
+        UpdatedAt = DateTime.UtcNow;
+    }
 }
 

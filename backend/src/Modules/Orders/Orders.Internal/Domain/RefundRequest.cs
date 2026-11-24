@@ -36,6 +36,11 @@ internal sealed class RefundRequest : BaseEntity<Guid>
 
     public void Approve(Guid adminUserId)
     {
+        if (Status != RefundStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot approve refund request from status '{Status}'. Only '{RefundStatus.Pending}' requests can be approved.");
+        }
+
         Status = RefundStatus.Approved;
         ProcessedBy = adminUserId;
         ProcessedAt = DateTime.UtcNow;
@@ -44,6 +49,11 @@ internal sealed class RefundRequest : BaseEntity<Guid>
 
     public void Reject(Guid adminUserId)
     {
+        if (Status != RefundStatus.Pending)
+        {
+            throw new InvalidOperationException($"Cannot reject refund request from status '{Status}'. Only '{RefundStatus.Pending}' requests can be rejected.");
+        }
+
         Status = RefundStatus.Rejected;
         ProcessedBy = adminUserId;
         ProcessedAt = DateTime.UtcNow;
@@ -52,6 +62,11 @@ internal sealed class RefundRequest : BaseEntity<Guid>
 
     public void MarkRefunded()
     {
+        if (Status != RefundStatus.Approved)
+        {
+            throw new InvalidOperationException($"Cannot mark refund request as refunded from status '{Status}'. Only '{RefundStatus.Approved}' requests can be marked as refunded.");
+        }
+
         Status = RefundStatus.Refunded;
         UpdatedAt = DateTime.UtcNow;
     }

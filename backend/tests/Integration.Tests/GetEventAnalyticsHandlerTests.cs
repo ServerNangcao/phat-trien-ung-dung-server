@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using CheckIn.Contracts;
 using Events.Internal.Domain;
 using Events.Internal.Features.Reports;
@@ -367,4 +367,7 @@ internal sealed class MockTicketingApi(IReadOnlyList<TicketTypeSummaryDto>? tick
 
     public Task<int> GetTotalIssuedTicketsCountAsync(Guid eventId, CancellationToken cancellationToken = default) =>
         Task.FromResult((ticketTypes ?? []).Sum(t => t.SoldQuantity));
+
+    public Task<int> CancelTicketsForOrderAsync(Guid orderId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(0);
 }

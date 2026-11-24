@@ -243,4 +243,58 @@ public class TicketingMyTicketsTests : IDisposable
         var valueResult = Assert.IsAssignableFrom<IValueHttpResult>(result);
         Assert.NotNull(valueResult.Value);
     }
+
+    [Fact]
+    public async Task CancelTicketsForOrderAsync_CancelsValidTicketsAndRestoresSoldQuantity()
+    {
+        using var db = new TicketingDbContext(_options);
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance);
+
+        var eventId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var ticketType = TicketType.Create(eventId, "Standard", 200000, 50, 4);
+        db.TicketTypes.Add(ticketType);
+        await db.SaveChangesAsync();
+
+        await service.IssueTicketsForOrderAsync(
+            orderId, eventId, customerId, "buyer@example.com", "Buyer",
+            "Concert", ticketType.Id, "Standard", 200000, 2, CancellationToken.None);
+
+        var before = await db.TicketTypes.AsNoTracking().FirstAsync(t => t.Id == ticketType.Id);
+        Assert.Equal(2, before.SoldQuantity);
+
+        var cancelledCount = await service.CancelTicketsForOrderAsync(orderId, CancellationToken.None);
+
+        Assert.Equal(2, cancelledCount);
+        var afterType = await db.TicketTypes.AsNoTracking().FirstAsync(t => t.Id == ticketType.Id);
+        Assert.Equal(0, afterType.SoldQuantity);
+        var tickets = await db.Tickets.AsNoTracking().Where(t => t.OrderId == orderId).ToListAsync();
+        Assert.All(tickets, t => Assert.Equal(TicketStatus.Cancelled, t.Status));
+    }
+
+    [Fact]
+    public async Task CancelTicketsForOrderAsync_ThrowsInvalidOperationException_WhenAnyTicketAlreadyUsed()
+    {
+        using var db = new TicketingDbContext(_options);
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance);
+
+        var eventId = Guid.NewGuid();
+        var orderId = Guid.NewGuid();
+        var customerId = Guid.NewGuid();
+        var ticketType = TicketType.Create(eventId, "VIP", 500000, 20, 4);
+        db.TicketTypes.Add(ticketType);
+        await db.SaveChangesAsync();
+
+        var issued = await service.IssueTicketsForOrderAsync(
+            orderId, eventId, customerId, "buyer@example.com", "Buyer",
+            "Concert", ticketType.Id, "VIP", 500000, 2, CancellationToken.None);
+
+        var firstTicket = await db.Tickets.FirstAsync(t => t.Id == issued[0].Id);
+        firstTicket.MarkUsed(Guid.NewGuid());
+        await db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => service.CancelTicketsForOrderAsync(orderId, CancellationToken.None));
+    }
 }

@@ -37,6 +37,7 @@ export interface Reservation {
 
 export interface PurchasedTicket {
   id: string;
+  orderId?: string;
   eventId: string;
   eventTitle: string;
   image: string;
@@ -234,6 +235,7 @@ export interface OrganizerOrderItem {
 
 export interface RefundRequestItem {
   id: string;
+  orderId?: string;
   orderCode: string;
   eventTitle: string;
   buyerName: string;
@@ -242,6 +244,18 @@ export interface RefundRequestItem {
   reason: string;
   requestedAt: string;
   status: "Pending" | "Approved" | "Rejected";
+  rawStatus?: string;
+}
+
+export interface MyRefundRequestItem {
+  id: string;
+  orderId: string;
+  orderCode: string;
+  amount: number;
+  reason: string;
+  status: "Pending" | "Approved" | "Rejected";
+  rawStatus?: string;
+  requestedAt: string;
 }
 
 export interface AdminUserItem {

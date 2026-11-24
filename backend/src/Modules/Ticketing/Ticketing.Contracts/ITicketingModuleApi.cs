@@ -191,6 +191,13 @@ public interface ITicketingModuleApi
         decimal unitPrice,
         int quantity,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Hủy toàn bộ vé hợp lệ của đơn hàng khi hoàn tiền và hoàn trả số lượng đã bán về kho.
+    /// </summary>
+    Task<int> CancelTicketsForOrderAsync(
+        Guid orderId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record TicketTypeSummaryDto(

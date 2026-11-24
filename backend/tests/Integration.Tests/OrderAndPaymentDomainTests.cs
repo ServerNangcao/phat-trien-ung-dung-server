@@ -175,4 +175,34 @@ public class OrderAndPaymentDomainTests
         Assert.Null(email.LastError);
         Assert.NotNull(email.SentAt);
     }
+
+    [Fact]
+    public void RefundRequest_ApproveAndMarkRefunded_Succeeds_FromPending()
+    {
+        var adminId = Guid.NewGuid();
+        var refund = RefundRequest.Create(Guid.NewGuid(), Guid.NewGuid(), 250000m, "Không thể tham dự");
+
+        Assert.Equal(RefundStatus.Pending, refund.Status);
+
+        refund.Approve(adminId);
+        Assert.Equal(RefundStatus.Approved, refund.Status);
+        Assert.Equal(adminId, refund.ProcessedBy);
+        Assert.NotNull(refund.ProcessedAt);
+
+        refund.MarkRefunded();
+        Assert.Equal(RefundStatus.Refunded, refund.Status);
+    }
+
+    [Fact]
+    public void RefundRequest_ApproveOrReject_ThrowsInvalidOperationException_WhenNotPending()
+    {
+        var adminId = Guid.NewGuid();
+        var refund = RefundRequest.Create(Guid.NewGuid(), Guid.NewGuid(), 250000m, "Đổi kế hoạch");
+        refund.Reject(adminId);
+
+        Assert.Equal(RefundStatus.Rejected, refund.Status);
+        Assert.Throws<InvalidOperationException>(() => refund.Approve(adminId));
+        Assert.Throws<InvalidOperationException>(() => refund.Reject(adminId));
+        Assert.Throws<InvalidOperationException>(() => refund.MarkRefunded());
+    }
 }

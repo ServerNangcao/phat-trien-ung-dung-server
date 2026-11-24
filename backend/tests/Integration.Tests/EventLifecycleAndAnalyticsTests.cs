@@ -393,4 +393,7 @@ internal sealed class TestTicketingModuleApi(IReadOnlyList<TicketTypeSummaryDto>
 
     public Task<IReadOnlyList<TicketTypeSummaryDto>> GetTicketTypesByEventIdAsync(Guid eventId, CancellationToken cancellationToken = default) =>
         Task.FromResult(tiers);
+
+    public Task<int> CancelTicketsForOrderAsync(Guid orderId, CancellationToken cancellationToken = default) =>
+        Task.FromResult(0);
 }

@@ -311,6 +311,23 @@ export const platformDemoApi = {
   getOrders: (): OrganizerOrderItem[] => readStore(ORDERS_KEY, DEFAULT_ORDERS),
 
   getRefunds: (): RefundRequestItem[] => readStore(REFUNDS_KEY, DEFAULT_REFUNDS),
+  createRefund: (orderId: string, reason: string): RefundRequestItem => {
+    const list = platformDemoApi.getRefunds();
+    const created: RefundRequestItem = {
+      id: `rf-${Date.now().toString(36)}`,
+      orderId,
+      orderCode: `ORD-${orderId.replace(/-/g, "").slice(0, 8).toUpperCase()}`,
+      eventTitle: "Sự kiện đã đặt",
+      buyerName: "Khách hàng",
+      buyerEmail: "customer@ticketing.vn",
+      amount: 0,
+      reason,
+      requestedAt: new Date().toISOString(),
+      status: "Pending",
+    };
+    writeStore(REFUNDS_KEY, [created, ...list]);
+    return created;
+  },
   decideRefund: (id: string, status: "Approved" | "Rejected"): RefundRequestItem[] => {
     const list = platformDemoApi.getRefunds();
     const next = list.map((item) => (item.id === id ? { ...item, status } : item));
