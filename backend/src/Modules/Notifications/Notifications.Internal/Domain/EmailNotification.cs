@@ -43,6 +43,8 @@ internal sealed class EmailNotification : BaseEntity<Guid>
     public void MarkSent()
     {
         Status = EmailNotificationStatus.Sent;
+        AttemptCount++;
+        NextRetryAt = null;
         SentAt = DateTime.UtcNow;
         LastError = null;
         UpdatedAt = DateTime.UtcNow;

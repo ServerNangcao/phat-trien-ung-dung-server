@@ -25,12 +25,14 @@ internal sealed class EventConfiguration : IEntityTypeConfiguration<Event>
         builder.HasOne(x => x.Category)
             .WithMany()
             .HasForeignKey(x => x.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict)
             .IsRequired();
 
         // FK internal: Venue
         builder.HasOne(x => x.Venue)
             .WithMany()
             .HasForeignKey(x => x.VenueId)
+            .OnDelete(DeleteBehavior.Restrict)
             .IsRequired();
 
         builder.Property(x => x.Title)

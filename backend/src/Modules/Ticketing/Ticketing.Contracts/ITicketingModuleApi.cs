@@ -61,6 +61,7 @@ public sealed record TicketDto
     public Guid OrderId { get; init; }
     public Guid TicketTypeId { get; init; }
     public Guid CustomerId { get; init; }
+    public string CustomerEmail { get; init; } = string.Empty;
     public string TicketCode { get; init; } = string.Empty;
     public string EventTitle { get; init; } = string.Empty;
     public string TicketTypeName { get; init; } = string.Empty;

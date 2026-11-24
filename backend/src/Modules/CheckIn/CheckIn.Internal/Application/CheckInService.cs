@@ -47,6 +47,11 @@ internal sealed class CheckInService : ICheckInModuleApi
         string staffId,
         CancellationToken cancellationToken = default)
     {
+        if (!Guid.TryParse(staffId, out var staffGuid) || staffGuid == Guid.Empty)
+        {
+            throw new ArgumentException("StaffId phải là một Guid hợp lệ và khác rỗng.", nameof(staffId));
+        }
+
         // 1. Gọi sang Ticketing module để xác thực chữ ký số HMAC và đổi trạng thái nguyên tử
         var redeem = await _ticketingApi.RedeemTicketAsync(
             request.QrPayload,
@@ -60,11 +65,6 @@ internal sealed class CheckInService : ICheckInModuleApi
             RedeemTicketStatus.AlreadyUsed => CheckInResult.AlreadyUsed,
             _ => CheckInResult.Invalid
         };
-
-        if (!Guid.TryParse(staffId, out var staffGuid))
-        {
-            staffGuid = Guid.Empty;
-        }
 
         // 2. Ghi audit log vào CheckInLogs
         var log = CheckInLog.Create(

@@ -14,6 +14,19 @@ public sealed class SecurityHeadersMiddleware
 
     public async Task InvokeAsync(HttpContext context)
     {
+        context.Response.OnStarting(() =>
+        {
+            ApplyHeaders(context);
+            return Task.CompletedTask;
+        });
+
+        ApplyHeaders(context);
+
+        await _next(context);
+    }
+
+    private static void ApplyHeaders(HttpContext context)
+    {
         var headers = context.Response.Headers;
 
         headers["X-Content-Type-Options"] = "nosniff";
@@ -25,8 +38,6 @@ public sealed class SecurityHeadersMiddleware
         {
             headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
         }
-
-        await _next(context);
     }
 }
 

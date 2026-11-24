@@ -50,7 +50,19 @@ public static class TicketingModule
         services.AddModuleValidators(typeof(TicketingModule).Assembly);
 
         // Đăng ký QrSigner với khóa bí mật tối thiểu 32 ký tự
-        var qrKey = configuration["Ticketing:QrKey"] ?? "development-ticketing-qr-signing-key-at-least-32b";
+        var qrKey = configuration["Ticketing:QrKey"];
+        var env = configuration["ASPNETCORE_ENVIRONMENT"] ?? configuration["DOTNET_ENVIRONMENT"] ?? string.Empty;
+        var isDevOrTest = string.Equals(env, "Development", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(env, "Testing", StringComparison.OrdinalIgnoreCase);
+
+        if (string.IsNullOrWhiteSpace(qrKey))
+        {
+            if (!isDevOrTest)
+            {
+                throw new InvalidOperationException("Ticketing:QrKey is required in production environment.");
+            }
+            qrKey = "development-ticketing-qr-signing-key-at-least-32b";
+        }
         services.AddSingleton(new QrSigner(qrKey));
 
         // Đăng ký nghiệp vụ Ticketing
@@ -82,11 +94,26 @@ public static class TicketingModule
 
         // 2. FR-10: Tạo hạng vé mới (Organizer/Admin)
         group.MapPost("/events/{eventId:guid}/ticket-types", async (
+            HttpContext context,
             Guid eventId,
             CreateTicketTypeRequest request,
             TicketingDbContext db,
             CancellationToken ct) =>
         {
+            if (!context.User.IsInRole("Organizer") && !context.User.IsInRole("Admin"))
+            {
+                return Results.Forbid();
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Name) ||
+                request.Price < 0 ||
+                request.TotalQuantity <= 0 ||
+                request.MaxPerOrder <= 0 ||
+                request.MaxPerOrder > request.TotalQuantity)
+            {
+                return Results.BadRequest(new { error = "Dữ liệu hạng vé không hợp lệ." });
+            }
+
             var ticketType = TicketType.Create(
                 eventId,
                 request.Name,
@@ -129,7 +156,10 @@ public static class TicketingModule
         .WithName("CreateTicketType")
         .WithTags("Ticketing")
         .RequireAuthorization()
-        .Produces(StatusCodes.Status201Created);
+        .Produces(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden);
 
         // 3. FR-11: Giữ vé tạm thời 10 phút (Customer)
         Func<HttpContext, ReserveTicketsRequest, ITicketingModuleApi, CancellationToken, Task<IResult>> handleReservation = async (
@@ -147,9 +177,9 @@ public static class TicketingModule
             var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
                            context.User.FindFirstValue("sub");
 
-            if (!Guid.TryParse(subClaim, out var customerId))
+            if (!Guid.TryParse(subClaim, out var customerId) || customerId == Guid.Empty)
             {
-                customerId = Guid.NewGuid(); // Demo/Fallback mode
+                return Results.Unauthorized();
             }
 
             var firstItem = request.Items is { Count: > 0 } ? request.Items[0] : null;
@@ -190,27 +220,53 @@ public static class TicketingModule
         group.MapPost("/reservations", handleReservation)
             .WithName("ReserveTickets")
             .WithTags("Ticketing")
+            .RequireAuthorization()
             .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
 
         group.MapPost("/ticketing/reservations", handleReservation)
             .WithName("ReserveTicketsAlias")
             .WithTags("Ticketing")
+            .RequireAuthorization()
             .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
 
         // 4. Lấy thông tin lượt giữ vé
         group.MapGet("/reservations/{id:guid}", async (
+            HttpContext context,
             Guid id,
             ITicketingModuleApi ticketingApi,
             CancellationToken ct) =>
         {
+            var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                           context.User.FindFirstValue("sub");
+
+            if (!Guid.TryParse(subClaim, out var customerId) || customerId == Guid.Empty)
+            {
+                return Results.Unauthorized();
+            }
+
             var reservation = await ticketingApi.GetReservationAsync(id, ct);
-            return reservation is not null ? Results.Ok(reservation) : Results.NotFound();
+            if (reservation is null)
+            {
+                return Results.NotFound();
+            }
+
+            if (reservation.CustomerId != customerId && !context.User.IsInRole("Admin"))
+            {
+                return Results.Forbid();
+            }
+
+            return Results.Ok(reservation);
         })
         .WithName("GetReservation")
         .WithTags("Ticketing")
+        .RequireAuthorization()
         .Produces<ReservationDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
         .Produces(StatusCodes.Status404NotFound);
 
         // 5. Hủy lượt giữ vé
@@ -223,9 +279,9 @@ public static class TicketingModule
             var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
                            context.User.FindFirstValue("sub");
 
-            if (!Guid.TryParse(subClaim, out var customerId))
+            if (!Guid.TryParse(subClaim, out var customerId) || customerId == Guid.Empty)
             {
-                customerId = Guid.Empty;
+                return Results.Unauthorized();
             }
 
             await ticketingApi.ReleaseAsync(id, customerId, ct);
@@ -233,97 +289,123 @@ public static class TicketingModule
         })
         .WithName("CancelReservation")
         .WithTags("Ticketing")
-        .Produces(StatusCodes.Status204NoContent);
+        .RequireAuthorization()
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         // 6. FR-19: "Vé của tôi" - Lấy danh sách vé đã mua của khách hàng
-        group.MapGet("/tickets/mine", async (
-            HttpContext context,
-            TicketingDbContext db,
-            IEventsModuleApi eventsApi,
-            CancellationToken ct) =>
-        {
-            var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-                           context.User.FindFirstValue("sub");
-
-            List<Ticket> tickets;
-            if (Guid.TryParse(subClaim, out var customerId))
-            {
-                tickets = await db.Tickets
-                    .AsNoTracking()
-                    .Include(t => t.TicketType)
-                    .Where(t => t.CustomerId == customerId)
-                    .OrderByDescending(t => t.CreatedAt)
-                    .ToListAsync(ct);
-            }
-            else
-            {
-                tickets = await db.Tickets
-                    .AsNoTracking()
-                    .Include(t => t.TicketType)
-                    .OrderByDescending(t => t.CreatedAt)
-                    .Take(20)
-                    .ToListAsync(ct);
-            }
-
-            var eventIds = tickets.Select(t => t.EventId).Distinct();
-            var eventsById = await eventsApi.GetEventsByIdsAsync(eventIds, ct);
-
-            var result = tickets.Select(t =>
-            {
-                eventsById.TryGetValue(t.EventId, out var ev);
-                var eventDate = ev?.StartsAt ?? t.CreatedAt;
-
-                return new
-                {
-                    id = t.Id,
-                    eventId = t.EventId,
-                    eventTitle = !string.IsNullOrWhiteSpace(ev?.Title) ? ev.Title : "Vé tham gia sự kiện",
-                    image = !string.IsNullOrWhiteSpace(ev?.CoverImageUrl)
-                        ? ev.CoverImageUrl
-                        : "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
-                    venue = FormatVenue(ev),
-                    date = eventDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                    tierName = t.TicketType != null ? t.TicketType.Name : "Vé tiêu chuẩn",
-                    holderName = string.IsNullOrEmpty(t.CustomerEmail) ? "Khách Hàng" : t.CustomerEmail,
-                    code = t.QrSignature,
-                    status = t.Status.ToLowerInvariant()
-                };
-            });
-
-            return Results.Ok(result);
-        })
+        group.MapGet("/tickets/mine", (HttpContext context, ITicketingModuleApi ticketingApi, IEventsModuleApi eventsApi, CancellationToken ct) =>
+            GetMyTicketsAsync(context, ticketingApi, eventsApi, ct))
         .WithName("GetMyTickets")
         .WithTags("Ticketing")
-        .AllowAnonymous();
+        .RequireAuthorization()
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status401Unauthorized);
 
         // 7. FR-17: Xuất ảnh QR Code định dạng PNG cho vé điện tử
-        group.MapGet("/tickets/{id:guid}/qr", async (
-            Guid id,
-            TicketingDbContext db,
-            CancellationToken ct) =>
-        {
-            var ticket = await db.Tickets
-                .AsNoTracking()
-                .FirstOrDefaultAsync(t => t.Id == id, ct);
-
-            if (ticket is null)
-            {
-                return Results.NotFound();
-            }
-
-            using var qrGenerator = new QRCodeGenerator();
-            using var qrCodeData = qrGenerator.CreateQrCode(ticket.QrSignature, QRCodeGenerator.ECCLevel.Q);
-            var qrCode = new PngByteQRCode(qrCodeData);
-            var pngBytes = qrCode.GetGraphic(10);
-
-            return Results.File(pngBytes, "image/png");
-        })
+        group.MapGet("/tickets/{id:guid}/qr", GetTicketQrImageAsync)
         .WithName("GetTicketQrImage")
         .WithTags("Ticketing")
+        .RequireAuthorization()
         .Produces(StatusCodes.Status200OK, contentType: "image/png")
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status401Unauthorized)
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
 
         return app;
+    }
+
+    internal static async Task<IResult> GetMyTicketsAsync(
+        HttpContext context,
+        ITicketingModuleApi ticketingApi,
+        IEventsModuleApi? eventsApi,
+        CancellationToken ct)
+    {
+        var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                       context.User.FindFirstValue("sub");
+
+        if (!Guid.TryParse(subClaim, out var customerId) || customerId == Guid.Empty)
+        {
+            return Results.Unauthorized();
+        }
+
+        var tickets = await ticketingApi.GetMyTicketsAsync(customerId, ct);
+
+        var eventIds = tickets.Select(t => t.EventId).Distinct();
+        var eventsById = eventsApi is not null
+            ? await eventsApi.GetEventsByIdsAsync(eventIds, ct)
+            : new Dictionary<Guid, EventBriefDto>();
+
+        var result = tickets.Select(t =>
+        {
+            eventsById.TryGetValue(t.EventId, out var ev);
+            var eventDate = ev?.StartsAt ?? t.CreatedAt;
+
+            return new
+            {
+                id = t.Id,
+                eventId = t.EventId,
+                eventTitle = !string.IsNullOrWhiteSpace(ev?.Title) ? ev.Title : (!string.IsNullOrWhiteSpace(t.EventTitle) ? t.EventTitle : "Vé tham gia sự kiện"),
+                image = !string.IsNullOrWhiteSpace(ev?.CoverImageUrl)
+                    ? ev.CoverImageUrl
+                    : "https://cdn.sukienbanve.id.vn/creative-morning.jpg",
+                venue = FormatVenue(ev),
+                date = eventDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                tierName = !string.IsNullOrWhiteSpace(t.TicketTypeName) ? t.TicketTypeName : "Vé tiêu chuẩn",
+                holderName = string.IsNullOrEmpty(t.CustomerEmail) ? "Khách Hàng" : t.CustomerEmail,
+                code = t.QrPayload,
+                status = t.Status.ToLowerInvariant()
+            };
+        });
+
+        return Results.Ok(result);
+    }
+
+    internal static Task<IResult> GetMyTicketsAsync(
+        HttpContext context,
+        ITicketingModuleApi ticketingApi,
+        CancellationToken ct) => GetMyTicketsAsync(context, ticketingApi, null, ct);
+
+    internal static async Task<IResult> GetTicketQrImageAsync(
+        HttpContext context,
+        Guid id,
+        TicketingDbContext db,
+        CancellationToken ct)
+    {
+        var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                       context.User.FindFirstValue("sub");
+
+        if (!Guid.TryParse(subClaim, out var userId) || userId == Guid.Empty)
+        {
+            return Results.Unauthorized();
+        }
+
+        var ticket = await db.Tickets
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
+
+        if (ticket is null)
+        {
+            return Results.NotFound();
+        }
+
+        if (ticket.CustomerId != userId && !context.User.IsInRole("Admin"))
+        {
+            return Results.Forbid();
+        }
+
+        if (ticket.Status == TicketStatus.Cancelled)
+        {
+            return Results.Conflict(new { error = "Vé đã bị hủy, không thể xuất mã QR." });
+        }
+
+        using var qrGenerator = new QRCodeGenerator();
+        using var qrCodeData = qrGenerator.CreateQrCode(ticket.QrSignature, QRCodeGenerator.ECCLevel.Q);
+        using var qrCode = new PngByteQRCode(qrCodeData);
+        var pngBytes = qrCode.GetGraphic(10);
+
+        return Results.File(pngBytes, "image/png");
     }
 
     private static string FormatVenue(EventBriefDto? ev)

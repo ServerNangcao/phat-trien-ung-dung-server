@@ -121,4 +121,108 @@ public class TicketingReservationTests : IDisposable
         var scan2 = await service.RedeemTicketAsync(qr, eventId, "staff-02");
         Assert.Equal(RedeemTicketStatus.AlreadyUsed, scan2.Status);
     }
+
+    [Fact]
+    public async Task ReleaseAsync_ConfirmedReservation_DoesNotReleaseOrRestoreStock()
+    {
+        using var db = new TicketingDbContext(_options);
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance);
+
+        var eventId = Guid.NewGuid();
+        var ticketType = TicketType.Create(eventId, "VIP", 500000, 100, 5);
+        db.TicketTypes.Add(ticketType);
+        await db.SaveChangesAsync();
+
+        var customerId = Guid.NewGuid();
+        var reservationDto = await service.ReserveAsync(customerId, eventId, ticketType.Id, 2, Guid.NewGuid().ToString());
+
+        // Lấy reservation từ DB và chuyển sang Confirmed (đã thanh toán thành công)
+        var reservation = await db.Reservations.FindAsync(reservationDto.Id);
+        Assert.NotNull(reservation);
+        reservation.Confirm();
+        await db.SaveChangesAsync();
+
+        // Kiểm tra ReservedQuantity hiện tại là 2
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(2, ticketType.ReservedQuantity);
+
+        // Gọi ReleaseAsync với reservation đã Confirmed
+        await service.ReleaseAsync(reservation.Id, customerId);
+
+        // Kiểm tra trạng thái vẫn là Confirmed và tồn kho ReservedQuantity không bị trừ hoàn trả
+        await db.Entry(reservation).ReloadAsync();
+        Assert.Equal(ReservationStatus.Confirmed, reservation.Status);
+
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(2, ticketType.ReservedQuantity);
+    }
+
+    [Fact]
+    public async Task ReserveAsync_DuplicateIdempotencyKey_ReturnsSameReservation_AndDoesNotDoubleDeductStock()
+    {
+        using var db = new TicketingDbContext(_options);
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance);
+
+        var eventId = Guid.NewGuid();
+        var ticketType = TicketType.Create(eventId, "VIP", 500000, 100, 5);
+        db.TicketTypes.Add(ticketType);
+        await db.SaveChangesAsync();
+
+        var customerId = Guid.NewGuid();
+        var idempotencyKey = "idemp-key-" + Guid.NewGuid();
+
+        // Lần 1: Giữ 2 vé
+        var reservation1 = await service.ReserveAsync(customerId, eventId, ticketType.Id, 2, idempotencyKey);
+        Assert.NotNull(reservation1);
+        Assert.Equal(2, reservation1.Quantity);
+        Assert.Equal("Active", reservation1.Status);
+
+        // Kiểm tra tồn kho đã giảm còn 98 (Reserved = 2)
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(2, ticketType.ReservedQuantity);
+        Assert.Equal(98, ticketType.AvailableQuantity);
+
+        // Lần 2: Gửi lại cùng idempotency key -> trả về cùng reservation ban đầu
+        var reservation2 = await service.ReserveAsync(customerId, eventId, ticketType.Id, 2, idempotencyKey);
+        Assert.NotNull(reservation2);
+        Assert.Equal(reservation1.Id, reservation2.Id);
+        Assert.Equal(reservation1.Quantity, reservation2.Quantity);
+        Assert.Equal(reservation1.ExpiresAtUtc, reservation2.ExpiresAtUtc);
+
+        // Kiểm tra tồn kho không bị trừ thêm lần nữa (vẫn là 98 khả dụng, Reserved = 2)
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(2, ticketType.ReservedQuantity);
+        Assert.Equal(98, ticketType.AvailableQuantity);
+    }
+
+    [Fact]
+    public async Task GetTicketTypesByEventIdAsync_TranslatesToSql_AndReturnsCorrectAvailableQuantity()
+    {
+        using var db = new TicketingDbContext(_options);
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance);
+
+        var eventId = Guid.NewGuid();
+        var ticketType1 = TicketType.Create(eventId, "Standard", 200000, 100, 10);
+        var ticketType2 = TicketType.Create(eventId, "VIP", 500000, 50, 5);
+        db.TicketTypes.AddRange(ticketType1, ticketType2);
+        await db.SaveChangesAsync();
+
+        // Đặt trước 5 vé Standard
+        await service.ReserveAsync(Guid.NewGuid(), eventId, ticketType1.Id, 5, Guid.NewGuid().ToString());
+
+        // Gọi GetTicketTypesByEventIdAsync
+        var types = await service.GetTicketTypesByEventIdAsync(eventId);
+
+        Assert.Equal(2, types.Count);
+
+        var standardType = Assert.Single(types, t => t.Name == "Standard");
+        Assert.Equal(100, standardType.TotalQuantity);
+        Assert.Equal(0, standardType.SoldQuantity);
+        Assert.Equal(95, standardType.AvailableQuantity);
+
+        var vipType = Assert.Single(types, t => t.Name == "VIP");
+        Assert.Equal(50, vipType.TotalQuantity);
+        Assert.Equal(0, vipType.SoldQuantity);
+        Assert.Equal(50, vipType.AvailableQuantity);
+    }
 }

@@ -40,7 +40,10 @@ public sealed class RequestRefundCommandHandler : IRequestHandler<RequestRefundC
         var refundRequest = RefundRequest.Create(order.Id, request.Reason, _clock.UtcNow);
         await _orderRepository.AddRefundRequestAsync(refundRequest, cancellationToken);
 
-        await _unitOfWork.CommitAsync(cancellationToken);
+        var commitResult = await _unitOfWork.CommitAsync(cancellationToken);
+        if (commitResult.IsFailure)
+            return Result<Guid>.Failure(commitResult.Error);
+
         return Result<Guid>.Success(refundRequest.Id);
     }
 }

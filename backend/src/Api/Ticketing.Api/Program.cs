@@ -6,6 +6,7 @@ using CheckIn.Internal.Api;
 using Notifications.Internal.Api;
 using Ticketing.Infrastructure.Core;
 using Ticketing.Api.Extensions;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -52,6 +53,14 @@ var app = builder.Build();
 // ───────────────────────────────────────────────
 // 3. Middleware Pipeline
 // ───────────────────────────────────────────────
+var forwardedHeadersOptions = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownIPNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
 app.UseSecurityHeaders();
 app.UseCors();
 

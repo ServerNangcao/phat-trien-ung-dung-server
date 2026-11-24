@@ -4,6 +4,7 @@ using Identity.Internal.Application.DTOs;
 using Identity.Internal.Application.Services;
 using Identity.Internal.Domain;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
@@ -397,7 +398,8 @@ internal static class IdentityEndpoints
         ForgotPasswordRequest request,
         IValidator<ForgotPasswordRequest> validator,
         UserManager<ApplicationUser> userManager,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory,
+        IWebHostEnvironment env)
     {
         var logger = loggerFactory.CreateLogger("Identity.ForgotPassword");
         var validationResult = await validator.ValidateAsync(request);
@@ -415,11 +417,14 @@ internal static class IdentityEndpoints
         }
 
         var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        logger.LogInformation("Password reset token generated for user {Email}: {Token}", user.Email, token);
+        logger.LogInformation("Password reset token generated for user {Email}", user.Email);
+
+        var isDevOrTest = string.Equals(env.EnvironmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(env.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase);
 
         return Results.Ok(new ForgotPasswordResponse(
             "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi.",
-            ResetToken: token));
+            ResetToken: isDevOrTest ? token : null));
     }
 
     /// <summary>

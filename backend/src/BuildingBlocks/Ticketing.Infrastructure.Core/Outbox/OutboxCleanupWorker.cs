@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Ticketing.SharedKernel;
 
 namespace Ticketing.Infrastructure.Core.Outbox;
 
@@ -15,15 +16,18 @@ public sealed class OutboxCleanupWorker : BackgroundService
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly OutboxOptions _options;
     private readonly ILogger<OutboxCleanupWorker> _logger;
+    private readonly IClock _clock;
 
     public OutboxCleanupWorker(
         IServiceScopeFactory scopeFactory,
         IOptions<OutboxOptions> options,
-        ILogger<OutboxCleanupWorker> logger)
+        ILogger<OutboxCleanupWorker> logger,
+        IClock? clock = null)
     {
         _scopeFactory = scopeFactory;
         _options = options.Value;
         _logger = logger;
+        _clock = clock ?? new SystemClock();
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -55,7 +59,8 @@ public sealed class OutboxCleanupWorker : BackgroundService
     {
         await using var scope = _scopeFactory.CreateAsyncScope();
         var markers = scope.ServiceProvider.GetServices<BaseDbContextMarker>();
-        var cutoff = DateTime.UtcNow.AddDays(-_options.CleanupAfterDays);
+        var cutoff = _clock.UtcNow.AddDays(-_options.CleanupAfterDays);
+        const int batchSize = 1000;
 
         foreach (var marker in markers)
         {
@@ -64,21 +69,49 @@ public sealed class OutboxCleanupWorker : BackgroundService
                 continue;
             }
 
-            // Xóa OutboxMessages đã xử lý
-            var outboxDeleted = await dbContext.OutboxMessages
-                .Where(x => x.ProcessedAt != null && x.ProcessedAt < cutoff)
-                .ExecuteDeleteAsync(cancellationToken);
+            var totalOutboxDeleted = 0;
+            while (true)
+            {
+                var outboxIds = await dbContext.OutboxMessages
+                    .Where(x => x.ProcessedAt != null && x.ProcessedAt < cutoff)
+                    .Select(x => x.Id)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
 
-            // Xóa InboxMessages cũ
-            var inboxDeleted = await dbContext.InboxMessages
-                .Where(x => x.ProcessedAt < cutoff)
-                .ExecuteDeleteAsync(cancellationToken);
+                if (outboxIds.Count == 0) break;
 
-            if (outboxDeleted > 0 || inboxDeleted > 0)
+                var deleted = await dbContext.OutboxMessages
+                    .Where(x => outboxIds.Contains(x.Id))
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                totalOutboxDeleted += deleted;
+                if (outboxIds.Count < batchSize) break;
+            }
+
+            var totalInboxDeleted = 0;
+            while (true)
+            {
+                var inboxIds = await dbContext.InboxMessages
+                    .Where(x => x.ProcessedAt < cutoff)
+                    .Select(x => x.Id)
+                    .Take(batchSize)
+                    .ToListAsync(cancellationToken);
+
+                if (inboxIds.Count == 0) break;
+
+                var deleted = await dbContext.InboxMessages
+                    .Where(x => inboxIds.Contains(x.Id))
+                    .ExecuteDeleteAsync(cancellationToken);
+
+                totalInboxDeleted += deleted;
+                if (inboxIds.Count < batchSize) break;
+            }
+
+            if (totalOutboxDeleted > 0 || totalInboxDeleted > 0)
             {
                 _logger.LogInformation(
                     "Cleanup schema '{Schema}': deleted {OutboxCount} outbox, {InboxCount} inbox messages",
-                    dbContext.Schema, outboxDeleted, inboxDeleted);
+                    dbContext.Schema, totalOutboxDeleted, totalInboxDeleted);
             }
         }
     }

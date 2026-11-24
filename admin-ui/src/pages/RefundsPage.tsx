@@ -11,7 +11,8 @@ const filters: Array<{ label: string; value?: RefundStatus }> = [
 export default function RefundsPage() {
   const [filter, setFilter] = useState<string | undefined>("Pending");
   const [refunds, setRefunds] = useState<RefundRequest[]>([]);
-  const [note, setNote] = useState("");
+  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,15 +34,27 @@ export default function RefundsPage() {
   }, [load]);
 
   async function process(refundRequestId: string, approve: boolean) {
+    const action = approve ? "approve" : "reject";
+    if (!window.confirm(`Are you sure you want to ${action} this refund request?`)) {
+      return;
+    }
     setError(null);
     setMessage(null);
+    setSubmittingId(refundRequestId);
     try {
-      await ordersApi.processRefund(refundRequestId, approve, note || undefined);
+      const itemNote = notes[refundRequestId] || undefined;
+      await ordersApi.processRefund(refundRequestId, approve, itemNote);
       setMessage(`Refund ${refundRequestId.slice(0, 8)}… ${approve ? "approved" : "rejected"}.`);
-      setNote("");
+      setNotes((prev) => {
+        const next = { ...prev };
+        delete next[refundRequestId];
+        return next;
+      });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSubmittingId(null);
     }
   }
 
@@ -71,15 +84,6 @@ export default function RefundsPage() {
       {error && <p className="error">{error}</p>}
       {message && <p className="success">{message}</p>}
 
-      <div className="row">
-        <input
-          type="text"
-          placeholder="Decision note (stored on the refund request)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </div>
-
       <table>
         <thead>
           <tr>
@@ -106,8 +110,29 @@ export default function RefundsPage() {
               <td>
                 {r.status === "Pending" ? (
                   <>
-                    <button className="approve" onClick={() => void process(r.id, true)}>Approve</button>{" "}
-                    <button className="reject" onClick={() => void process(r.id, false)}>Reject</button>
+                    <input
+                      type="text"
+                      placeholder="Decision note (audit)"
+                      aria-label="Decision note"
+                      value={notes[r.id] ?? ""}
+                      onChange={(e) => setNotes({ ...notes, [r.id]: e.target.value })}
+                      disabled={submittingId === r.id}
+                      style={{ marginRight: "0.5rem" }}
+                    />
+                    <button
+                      className="approve"
+                      onClick={() => void process(r.id, true)}
+                      disabled={submittingId === r.id}
+                    >
+                      Approve
+                    </button>{" "}
+                    <button
+                      className="reject"
+                      onClick={() => void process(r.id, false)}
+                      disabled={submittingId === r.id}
+                    >
+                      Reject
+                    </button>
                   </>
                 ) : (
                   <span className="hint">
