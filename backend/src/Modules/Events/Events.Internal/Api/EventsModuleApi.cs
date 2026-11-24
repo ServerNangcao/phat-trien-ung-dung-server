@@ -31,6 +31,7 @@ internal sealed class EventsModuleApi(
                 e.Title,
                 e.CoverImageKey,
                 e.StartsAt,
+                e.OrganizerId,
                 VenueName = e.Venue != null ? e.Venue.Name : string.Empty,
                 VenueCity = e.Venue != null ? e.Venue.City : string.Empty
             })
@@ -46,7 +47,8 @@ internal sealed class EventsModuleApi(
                 coverImageUrl,
                 row.StartsAt,
                 row.VenueName,
-                row.VenueCity);
+                row.VenueCity,
+                row.OrganizerId);
         }
 
         return result;
@@ -58,6 +60,44 @@ internal sealed class EventsModuleApi(
     {
         var events = await GetEventsByIdsAsync([eventId], cancellationToken);
         return events.GetValueOrDefault(eventId);
+    }
+
+    public async Task<IReadOnlyList<EventBriefDto>> GetEventsByOrganizerAsync(
+        Guid organizerId,
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await db.Events
+            .AsNoTracking()
+            .Include(e => e.Venue)
+            .Where(e => e.OrganizerId == organizerId)
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(e => new
+            {
+                e.Id,
+                e.Title,
+                e.CoverImageKey,
+                e.StartsAt,
+                e.OrganizerId,
+                VenueName = e.Venue != null ? e.Venue.Name : string.Empty,
+                VenueCity = e.Venue != null ? e.Venue.City : string.Empty
+            })
+            .ToListAsync(cancellationToken);
+
+        var result = new List<EventBriefDto>(rows.Count);
+        foreach (var row in rows)
+        {
+            var coverImageUrl = await ResolveCoverImageUrlAsync(row.Id, row.CoverImageKey, cancellationToken);
+            result.Add(new EventBriefDto(
+                row.Id,
+                row.Title,
+                coverImageUrl,
+                row.StartsAt,
+                row.VenueName,
+                row.VenueCity,
+                row.OrganizerId));
+        }
+
+        return result;
     }
 
     private async Task<string?> ResolveCoverImageUrlAsync(

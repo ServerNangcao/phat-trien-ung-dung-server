@@ -78,7 +78,9 @@ public sealed record TicketTypeDto(
     decimal Price,
     int Capacity,
     int QuantityAvailable,
-    int MaxPerOrder);
+    int MaxPerOrder,
+    int SoldQuantity = 0,
+    int ReservedQuantity = 0);
 
 public sealed record ReservationDto(
     Guid Id,
@@ -198,4 +200,5 @@ public sealed record TicketTypeSummaryDto(
     decimal Price,
     int TotalQuantity,
     int SoldQuantity,
-    int AvailableQuantity);
+    int AvailableQuantity,
+    int ReservedQuantity = 0);

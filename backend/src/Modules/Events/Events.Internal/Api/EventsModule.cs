@@ -263,6 +263,20 @@ public static class EventsModule
 
         // ── Events: Admin (JWT Bearer + Role=Admin required) ──────────
 
+        // GET /api/events/admin: Admin xem toàn bộ sự kiện (mọi trạng thái để kiểm duyệt)
+        events.MapGet("/admin", async (
+            ListOrganizerEventsHandler handler,
+            string? status,
+            string? search,
+            int page = 1,
+            int pageSize = 50,
+            CancellationToken ct = default) =>
+        {
+            var query = new ListOrganizerEventsQuery(null, status, search, page, pageSize);
+            var result = await handler.HandleAsync(query, ct);
+            return result.ToHttpResult();
+        }).RequireAuthorization(p => p.RequireRole(AdminRole));
+
         // POST /api/events/{id}/approve
         events.MapPost("/{id:guid}/approve", async (
             Guid id,

@@ -1,4 +1,4 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using CheckIn.Contracts;
 using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
@@ -24,7 +24,8 @@ internal sealed record OrganizerEventAnalyticsResponse(
     int CheckedInAttendees,
     double AttendanceRatePercentage,
     IReadOnlyList<TicketTierAnalyticsItem> Tiers,
-    DateTime CalculatedAt);
+    DateTime CalculatedAt,
+    int TotalReservedTickets = 0);
 
 internal sealed record TicketTierAnalyticsItem(
     Guid TicketTypeId,
@@ -33,7 +34,8 @@ internal sealed record TicketTierAnalyticsItem(
     int TotalCapacity,
     int SoldCount,
     int QuantityAvailable,
-    decimal Revenue);
+    decimal Revenue,
+    int ReservedCount = 0);
 
 internal sealed class GetEventAnalyticsHandler(
     EventsDbContext db,
@@ -165,7 +167,8 @@ internal sealed class GetEventAnalyticsHandler(
                 TotalCapacity: tt.TotalQuantity,
                 SoldCount: sold,
                 QuantityAvailable: tt.AvailableQuantity,
-                Revenue: rev);
+                Revenue: rev,
+                ReservedCount: tt.ReservedQuantity);
         }).ToList();
 
         // Nếu có hạng vé bán từ Orders mà không nằm trong ticketTypes query
@@ -201,7 +204,8 @@ internal sealed class GetEventAnalyticsHandler(
             CheckedInAttendees: totalCheckedIn,
             AttendanceRatePercentage: attendanceRate,
             Tiers: tiersBreakdown,
-            CalculatedAt: DateTime.UtcNow);
+            CalculatedAt: DateTime.UtcNow,
+            TotalReservedTickets: tiersBreakdown.Sum(x => x.ReservedCount));
 
         // Lưu / Cập nhật vào bảng EventStatistics phục vụ truy vấn định kỳ và fallback nhanh
         try

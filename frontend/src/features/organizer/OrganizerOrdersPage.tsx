@@ -1,11 +1,30 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { formatVnd, platformDemoApi } from "../../api/platformDemo";
+import { formatVnd } from "../../api/platformDemo";
+import { ticketingApi } from "../../api/service";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { OrganizerLayout } from "./OrganizerLayout";
 
+function formatOrderDate(raw: string): string {
+  const parsed = new Date(raw);
+  if (isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleString("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 export function OrganizerOrdersPage() {
-  const orders = useMemo(() => platformDemoApi.getOrders(), []);
+  const { data: orders = [], isLoading, isError } = useQuery({
+    queryKey: ["organizer", "orders"],
+    queryFn: () => ticketingApi.organizer.getOrders(),
+  });
+
   const [query, setQuery] = useState("");
   const [paymentFilter, setPaymentFilter] = useState<"ALL" | "Paid" | "Pending" | "Refunded">("ALL");
 
@@ -26,8 +45,14 @@ export function OrganizerOrdersPage() {
   return (
     <OrganizerLayout
       title="Đơn hàng & người tham dự"
-      subtitle="Tra cứu mã đơn, trạng thái thanh toán VNPay và tình trạng check-in tại cổng."
+      subtitle="Tra cứu mã đơn, trạng thái thanh toán và tình trạng check-in tại cổng theo dữ liệu thật."
     >
+      {isError && (
+        <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
+          Không thể tải danh sách đơn hàng từ máy chủ.
+        </div>
+      )}
+
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 text-[#182226]">
         <div className="flex flex-1 min-w-[220px] items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2">
           <Search size={16} className="text-[#526066]" />
@@ -58,57 +83,67 @@ export function OrganizerOrdersPage() {
       </div>
 
       <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white text-[#182226]">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-[#526066]">
-            <tr>
-              <th className="px-5 py-3.5">Mã đơn</th>
-              <th className="px-5 py-3.5">Người tham dự</th>
-              <th className="px-5 py-3.5">Sự kiện &amp; Hạng vé</th>
-              <th className="px-5 py-3.5">Tổng tiền</th>
-              <th className="px-5 py-3.5">Thanh toán</th>
-              <th className="px-5 py-3.5">Check-in</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-200 bg-white">
-            {filtered.map((order) => (
-              <tr key={order.orderCode} className="hover:bg-slate-50">
-                <td className="px-5 py-4">
-                  <p className="font-mono text-xs font-bold text-[#182226]">{order.orderCode}</p>
-                  <p className="text-[11px] text-[#526066]">{order.createdAt}</p>
-                </td>
-                <td className="px-5 py-4">
-                  <p className="font-bold text-[#182226]">{order.buyerName}</p>
-                  <p className="text-xs text-[#526066]">{order.buyerEmail}</p>
-                </td>
-                <td className="px-5 py-4">
-                  <p className="font-semibold text-[#182226]">{order.eventTitle}</p>
-                  <p className="text-xs text-[#526066]">
-                    {order.tierName} × {order.quantity}
-                  </p>
-                </td>
-                <td className="px-5 py-4 font-bold text-[#182226]">{formatVnd(order.totalAmount)}</td>
-                <td className="px-5 py-4">
-                  <StatusBadge
-                    tone={
-                      order.paymentStatus === "Paid"
-                        ? "success"
-                        : order.paymentStatus === "Pending"
-                          ? "warning"
-                          : "neutral"
-                    }
-                  >
-                    {order.paymentStatus}
-                  </StatusBadge>
-                </td>
-                <td className="px-5 py-4">
-                  <StatusBadge tone={order.checkInStatus === "CheckedIn" ? "success" : "neutral"}>
-                    {order.checkInStatus === "CheckedIn" ? "Đã vào cổng" : "Chưa quét"}
-                  </StatusBadge>
-                </td>
+        {isLoading ? (
+          <div className="p-8 text-center text-sm text-[#526066]">Đang tải danh sách đơn hàng...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-10 text-center text-sm text-[#526066]">
+            {orders.length === 0
+              ? "Chưa có đơn hàng nào cho các sự kiện của bạn."
+              : "Không tìm thấy đơn hàng phù hợp với bộ lọc."}
+          </div>
+        ) : (
+          <table className="w-full min-w-[760px] text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-[#526066]">
+              <tr>
+                <th className="px-5 py-3.5">Mã đơn</th>
+                <th className="px-5 py-3.5">Người tham dự</th>
+                <th className="px-5 py-3.5">Sự kiện &amp; Hạng vé</th>
+                <th className="px-5 py-3.5">Tổng tiền</th>
+                <th className="px-5 py-3.5">Thanh toán</th>
+                <th className="px-5 py-3.5">Check-in</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-200 bg-white">
+              {filtered.map((order) => (
+                <tr key={order.orderCode} className="hover:bg-slate-50">
+                  <td className="px-5 py-4">
+                    <p className="font-mono text-xs font-bold text-[#182226]">{order.orderCode}</p>
+                    <p className="text-[11px] text-[#526066]">{formatOrderDate(order.createdAt)}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-bold text-[#182226]">{order.buyerName}</p>
+                    <p className="text-xs text-[#526066]">{order.buyerEmail}</p>
+                  </td>
+                  <td className="px-5 py-4">
+                    <p className="font-semibold text-[#182226]">{order.eventTitle}</p>
+                    <p className="text-xs text-[#526066]">
+                      {order.tierName} × {order.quantity}
+                    </p>
+                  </td>
+                  <td className="px-5 py-4 font-bold text-[#182226]">{formatVnd(order.totalAmount)}</td>
+                  <td className="px-5 py-4">
+                    <StatusBadge
+                      tone={
+                        order.paymentStatus === "Paid"
+                          ? "success"
+                          : order.paymentStatus === "Pending"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      {order.paymentStatus}
+                    </StatusBadge>
+                  </td>
+                  <td className="px-5 py-4">
+                    <StatusBadge tone={order.checkInStatus === "CheckedIn" ? "success" : "neutral"}>
+                      {order.checkInStatus === "CheckedIn" ? "Đã vào cổng" : "Chưa quét"}
+                    </StatusBadge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </OrganizerLayout>
   );

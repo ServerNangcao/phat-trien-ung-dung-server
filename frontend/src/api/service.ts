@@ -4,16 +4,24 @@ import { platformDemoApi } from "./platformDemo";
 import type {
   AdminUserItem,
   AuthResponse,
+  CategoryDto,
   CheckInStatus,
   CheckoutInput,
+  CreateOrganizerEventInput,
+  CreateTicketTypeInput,
   EventItem,
   LoginRequest,
+  ManagedEvent,
+  ManagedEventStatus,
+  ManagedTicketTier,
+  OrganizerOrderItem,
   PurchasedTicket,
   RegisterRequest,
   Reservation,
   TicketTier,
   UserProfileResponse,
   UserRole,
+  VenueDto,
 } from "./types";
 
 const DEFAULT_IMAGES = [
@@ -268,5 +276,229 @@ export const ticketingApi = {
       return;
     }
     await apiClient.put(`/api/identity/users/${userId}/status`, { isActive });
+  },
+  organizer: {
+    getCategories: async (): Promise<CategoryDto[]> => {
+      if (isDemoMode) {
+        return [
+          { id: "cat-music", name: "Âm nhạc", slug: "am-nhac" },
+          { id: "cat-art", name: "Nghệ thuật", slug: "nghe-thuat" },
+          { id: "cat-workshop", name: "Hội thảo", slug: "hoi-thao" },
+          { id: "cat-food", name: "Ẩm thực", slug: "am-thuc" },
+          { id: "cat-sport", name: "Thể thao", slug: "the-thao" },
+        ];
+      }
+      const { data } = await apiClient.get<CategoryDto[]>("/api/categories");
+      return Array.isArray(data) ? data : [];
+    },
+    getVenues: async (city?: string): Promise<VenueDto[]> => {
+      if (isDemoMode) return [];
+      const { data } = await apiClient.get<VenueDto[]>("/api/venues", {
+        params: city ? { city } : undefined,
+      });
+      return Array.isArray(data) ? data : [];
+    },
+    createVenue: async (input: { name: string; address: string; city: string; capacity?: number }): Promise<string> => {
+      const { data } = await apiClient.post<string>("/api/venues", input);
+      return data;
+    },
+    getMyEvents: async (): Promise<ManagedEvent[]> => {
+      if (isDemoMode) return platformDemoApi.getManagedEvents();
+      const { data } = await apiClient.get<{
+        items?: Array<{
+          id: string;
+          title: string;
+          slug: string;
+          startsAt: string;
+          endsAt: string;
+          status: string;
+          rejectReason?: string | null;
+          categoryName: string;
+          venueName: string;
+          venueCity: string;
+          description?: string | null;
+        }>;
+      }>("/api/events/mine", { params: { page: 1, pageSize: 100 } });
+
+      const rawItems = Array.isArray(data?.items) ? data.items : [];
+      const enriched = await Promise.all(
+        rawItems.map(async (ev): Promise<ManagedEvent> => {
+          let tiers: ManagedTicketTier[] = [];
+          try {
+            const { data: rawTiers } = await apiClient.get<
+              Array<{
+                id: string;
+                name: string;
+                price: number;
+                capacity: number;
+                quantityAvailable: number;
+                maxPerOrder: number;
+                soldQuantity?: number;
+                reservedQuantity?: number;
+              }>
+            >(`/api/events/${ev.id}/ticket-types`);
+            if (Array.isArray(rawTiers)) {
+              tiers = rawTiers.map((t) => ({
+                id: t.id,
+                name: t.name,
+                description: `Tối đa ${t.maxPerOrder} vé/đơn`,
+                price: Number(t.price ?? 0),
+                total: Number(t.capacity ?? 0),
+                sold: Number(t.soldQuantity ?? 0),
+                reserved: Number(t.reservedQuantity ?? 0),
+                available: Number(t.quantityAvailable ?? 0),
+                maxPerOrder: Number(t.maxPerOrder ?? 4),
+              }));
+            }
+          } catch {
+            tiers = [];
+          }
+
+          const startsAtDate = new Date(ev.startsAt);
+          const formattedDate = !isNaN(startsAtDate.getTime())
+            ? `${startsAtDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })} · ${startsAtDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+            : ev.startsAt;
+
+          const statusMap: Record<string, ManagedEventStatus> = {
+            OnSale: "Published",
+            PendingApproval: "Pending",
+            Draft: "Draft",
+            Rejected: "Rejected",
+            Ended: "Ended",
+            Cancelled: "Cancelled",
+          };
+
+          return {
+            id: ev.id,
+            slug: ev.slug,
+            title: ev.title,
+            category: ev.categoryName || "Âm nhạc",
+            city: ev.venueCity || "",
+            venue: ev.venueName || "",
+            date: formattedDate,
+            startsAt: ev.startsAt,
+            endsAt: ev.endsAt,
+            organizer: "Ban Tổ Chức",
+            verified: true,
+            status: statusMap[ev.status] ?? (ev.status as ManagedEventStatus),
+            rejectReason: ev.rejectReason ?? undefined,
+            description: ev.description || "",
+            schedule: [],
+            tiers,
+          };
+        }),
+      );
+
+      return enriched;
+    },
+    createEvent: async (input: CreateOrganizerEventInput): Promise<string> => {
+      const { data } = await apiClient.post<string>("/api/events", input);
+      return data;
+    },
+    uploadCoverImage: async (eventId: string, file: File): Promise<void> => {
+      const { data: presign } = await apiClient.post<{
+        uploadUrl: string;
+        objectKey: string;
+      }>(`/api/events/${eventId}/cover-image/presign`, {
+        contentType: file.type,
+      });
+
+      const uploadResponse = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Không thể tải ảnh lên máy chủ lưu trữ.");
+      }
+
+      await apiClient.post(`/api/events/${eventId}/cover-image/confirm`, {
+        objectKey: presign.objectKey,
+      });
+    },
+    submitEvent: async (eventId: string): Promise<void> => {
+      await apiClient.post(`/api/events/${eventId}/submit`);
+    },
+    createTicketType: async (eventId: string, input: CreateTicketTypeInput): Promise<void> => {
+      await apiClient.post(`/api/events/${eventId}/ticket-types`, input);
+    },
+    getOrders: async (params?: { eventId?: string; status?: string; search?: string }): Promise<OrganizerOrderItem[]> => {
+      if (isDemoMode) return platformDemoApi.getOrders();
+      const { data } = await apiClient.get<OrganizerOrderItem[]>("/api/orders/organizer", { params });
+      return Array.isArray(data) ? data : [];
+    },
+  },
+  adminEvents: {
+    list: async (status?: string): Promise<ManagedEvent[]> => {
+      if (isDemoMode) return platformDemoApi.getManagedEvents();
+      const { data } = await apiClient.get<{
+        items?: Array<{
+          id: string;
+          title: string;
+          slug: string;
+          startsAt: string;
+          endsAt: string;
+          status: string;
+          rejectReason?: string | null;
+          categoryName: string;
+          venueName: string;
+          venueCity: string;
+          description?: string | null;
+        }>;
+      }>("/api/events/admin", {
+        params: { page: 1, pageSize: 100, ...(status ? { status } : {}) },
+      });
+
+      const rawItems = Array.isArray(data?.items) ? data.items : [];
+      const statusMap: Record<string, ManagedEventStatus> = {
+        OnSale: "Published",
+        PendingApproval: "Pending",
+        Draft: "Draft",
+        Rejected: "Rejected",
+        Ended: "Ended",
+        Cancelled: "Cancelled",
+      };
+
+      return rawItems.map((ev) => {
+        const startsAtDate = new Date(ev.startsAt);
+        const formattedDate = !isNaN(startsAtDate.getTime())
+          ? `${startsAtDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })} · ${startsAtDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+          : ev.startsAt;
+
+        return {
+          id: ev.id,
+          slug: ev.slug,
+          title: ev.title,
+          category: ev.categoryName || "Âm nhạc",
+          city: ev.venueCity || "",
+          venue: ev.venueName || "",
+          date: formattedDate,
+          startsAt: ev.startsAt,
+          endsAt: ev.endsAt,
+          organizer: "Ban Tổ Chức",
+          verified: true,
+          status: statusMap[ev.status] ?? (ev.status as ManagedEventStatus),
+          rejectReason: ev.rejectReason ?? undefined,
+          description: ev.description || "",
+          schedule: [],
+          tiers: [],
+        };
+      });
+    },
+    approve: async (eventId: string): Promise<void> => {
+      if (isDemoMode) {
+        platformDemoApi.moderateEvent(eventId, "Published");
+        return;
+      }
+      await apiClient.post(`/api/events/${eventId}/approve`);
+    },
+    reject: async (eventId: string, reason: string): Promise<void> => {
+      if (isDemoMode) {
+        platformDemoApi.moderateEvent(eventId, "Rejected", reason);
+        return;
+      }
+      await apiClient.post(`/api/events/${eventId}/reject`, { reason });
+    },
   },
 };

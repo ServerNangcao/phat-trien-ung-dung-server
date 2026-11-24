@@ -98,11 +98,36 @@ public static class TicketingModule
             Guid eventId,
             CreateTicketTypeRequest request,
             TicketingDbContext db,
+            IEventsModuleApi eventsApi,
             CancellationToken ct) =>
         {
-            if (!context.User.IsInRole("Organizer") && !context.User.IsInRole("Admin"))
+            var isAdmin = context.User.IsInRole("Admin");
+            if (!context.User.IsInRole("Organizer") && !isAdmin)
             {
                 return Results.Forbid();
+            }
+
+            if (!isAdmin)
+            {
+                var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                               context.User.FindFirstValue("sub") ??
+                               context.User.FindFirstValue("id");
+
+                if (!Guid.TryParse(subClaim, out var organizerId) || organizerId == Guid.Empty)
+                {
+                    return Results.Unauthorized();
+                }
+
+                var ev = await eventsApi.GetEventByIdAsync(eventId, ct);
+                if (ev is null)
+                {
+                    return Results.NotFound(new { error = "Sự kiện không tồn tại." });
+                }
+
+                if (ev.OrganizerId != Guid.Empty && ev.OrganizerId != organizerId)
+                {
+                    return Results.Forbid();
+                }
             }
 
             if (string.IsNullOrWhiteSpace(request.Name) ||
@@ -148,8 +173,12 @@ public static class TicketingModule
                 ticketType.EventId,
                 ticketType.Name,
                 ticketType.Price,
+                capacity = ticketType.TotalQuantity,
                 ticketType.TotalQuantity,
+                quantityAvailable = ticketType.AvailableQuantity,
                 ticketType.AvailableQuantity,
+                ticketType.SoldQuantity,
+                ticketType.ReservedQuantity,
                 ticketType.MaxPerOrder
             });
         })

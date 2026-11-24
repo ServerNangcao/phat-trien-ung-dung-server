@@ -9,7 +9,7 @@ namespace Events.Internal.Features.Events.ListEvents;
 /// Query params để Organizer xem danh sách sự kiện của riêng mình (gồm mọi trạng thái).
 /// </summary>
 internal sealed record ListOrganizerEventsQuery(
-    Guid OrganizerId,
+    Guid? OrganizerId,
     string? Status = null,
     string? Search = null,
     int Page = 1,
@@ -29,7 +29,8 @@ internal sealed record OrganizerEventSummaryResponse(
     string CategoryName,
     string VenueName,
     string VenueCity,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? Description = null);
 
 internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
 {
@@ -43,9 +44,12 @@ internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
             return Result.Validation<PagedResult<OrganizerEventSummaryResponse>>(
                 $"Page phải >= 1, PageSize phải từ 1 đến {MaxPageSize}.");
 
-        var q = db.Events
-            .Where(e => e.OrganizerId == query.OrganizerId)
-            .AsQueryable();
+        var q = db.Events.AsQueryable();
+
+        if (query.OrganizerId.HasValue)
+        {
+            q = q.Where(e => e.OrganizerId == query.OrganizerId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.Status))
         {
@@ -81,7 +85,8 @@ internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
                 e.Category.Name,
                 e.Venue.Name,
                 e.Venue.City,
-                e.CreatedAt))
+                e.CreatedAt,
+                e.Description))
             .ToListAsync(cancellationToken);
 
         var result = new PagedResult<OrganizerEventSummaryResponse>(

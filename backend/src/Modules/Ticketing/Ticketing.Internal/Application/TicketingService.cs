@@ -48,7 +48,9 @@ internal sealed class TicketingService : ITicketingModuleApi
                 t.Price,
                 t.TotalQuantity,
                 Math.Max(0, t.TotalQuantity - t.ReservedQuantity - t.SoldQuantity),
-                t.MaxPerOrder))
+                t.MaxPerOrder,
+                t.SoldQuantity,
+                t.ReservedQuantity))
             .ToListAsync(cancellationToken);
     }
 
@@ -544,7 +546,8 @@ internal sealed class TicketingService : ITicketingModuleApi
                 tt.Price,
                 tt.TotalQuantity,
                 tt.SoldQuantity,
-                Math.Max(0, tt.TotalQuantity - tt.ReservedQuantity - tt.SoldQuantity)))
+                Math.Max(0, tt.TotalQuantity - tt.ReservedQuantity - tt.SoldQuantity),
+                tt.ReservedQuantity))
             .ToListAsync(cancellationToken);
 
         return ticketTypes;

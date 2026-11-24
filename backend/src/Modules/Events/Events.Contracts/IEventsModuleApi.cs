@@ -9,7 +9,8 @@ public sealed record EventBriefDto(
     string? CoverImageUrl,
     DateTime StartsAt,
     string VenueName,
-    string VenueCity);
+    string VenueCity,
+    Guid OrganizerId = default);
 
 /// <summary>
 /// API công khai của module Events.
@@ -29,5 +30,12 @@ public interface IEventsModuleApi
     /// </summary>
     Task<EventBriefDto?> GetEventByIdAsync(
         Guid eventId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy danh sách tóm tắt các sự kiện thuộc quyền quản lý của một Organizer.
+    /// </summary>
+    Task<IReadOnlyList<EventBriefDto>> GetEventsByOrganizerAsync(
+        Guid organizerId,
         CancellationToken cancellationToken = default);
 }

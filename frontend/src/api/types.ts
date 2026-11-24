@@ -145,7 +145,47 @@ export interface UserProfile {
   twoFactorEnabled: boolean;
 }
 
-export type ManagedEventStatus = "Published" | "Pending" | "Draft" | "Rejected";
+export type ManagedEventStatus =
+  | "Published"
+  | "Pending"
+  | "Draft"
+  | "Rejected"
+  | "OnSale"
+  | "PendingApproval"
+  | "Ended"
+  | "Cancelled";
+
+export interface CategoryDto {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface VenueDto {
+  id: string;
+  name: string;
+  address: string;
+  city: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  capacity?: number | null;
+}
+
+export interface CreateOrganizerEventInput {
+  categoryId: string;
+  venueId: string;
+  title: string;
+  description?: string;
+  startsAt: string;
+  endsAt: string;
+}
+
+export interface CreateTicketTypeInput {
+  name: string;
+  price: number;
+  totalQuantity: number;
+  maxPerOrder: number;
+}
 
 export interface ManagedTicketTier {
   id: string;
@@ -155,16 +195,20 @@ export interface ManagedTicketTier {
   total: number;
   sold: number;
   reserved: number;
+  available?: number;
   maxPerOrder: number;
 }
 
 export interface ManagedEvent {
   id: string;
+  slug?: string;
   title: string;
-  category: EventCategory;
+  category: EventCategory | string;
   city: string;
   venue: string;
   date: string;
+  startsAt?: string;
+  endsAt?: string;
   organizer: string;
   verified: boolean;
   status: ManagedEventStatus;
