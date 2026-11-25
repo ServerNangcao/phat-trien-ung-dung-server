@@ -10,7 +10,8 @@ public sealed record EventBriefDto(
     DateTime StartsAt,
     string VenueName,
     string VenueCity,
-    Guid OrganizerId = default);
+    Guid OrganizerId = default,
+    string Status = "OnSale");
 
 /// <summary>
 /// API công khai của module Events.

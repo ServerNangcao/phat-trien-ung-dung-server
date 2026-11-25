@@ -81,10 +81,17 @@ export function DiscoverPage() {
 
   const availableHotEvents = hotEvents
     .map((q, index) => ({ event: q.data, index }))
-    .filter((entry): entry is { event: EventItem; index: number } => !!entry.event);
+    .filter(
+      (entry): entry is { event: EventItem; index: number } =>
+        !!entry.event &&
+        (!entry.event.status || entry.event.status === "Published" || entry.event.status === "OnSale"),
+    );
 
   const [hotIndex, setHotIndex] = useState(0);
-  const featured = hotEvents[hotIndex]?.data ?? availableHotEvents[0]?.event;
+  const featured =
+    availableHotEvents.find((entry) => entry.index === hotIndex)?.event ??
+    availableHotEvents[0]?.event ??
+    data?.items?.[0];
   const totalPages = Math.max(1, Math.ceil((data?.total ?? 0) / EVENT_PAGE_SIZE));
 
   const handleFilter = (setter: (value: string) => void, value: string) => {

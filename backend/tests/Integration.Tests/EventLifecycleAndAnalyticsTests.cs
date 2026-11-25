@@ -329,6 +329,41 @@ public class EventLifecycleAndAnalyticsTests : IDisposable
         Assert.Equal(30, savedStats.TotalTicketsSold);
         Assert.Equal(24, savedStats.TotalCheckedIn);
     }
+
+    [Fact]
+    public async Task CancelAsync_By_Admin_Removes_OnSale_Event_From_Public_ListEvents()
+    {
+        var venue = Venue.Create("Nhà hát Hòa Bình", "3 Tháng 2", "TP. Hồ Chí Minh", 2500);
+        _db.Venues.Add(venue);
+        await _db.SaveChangesAsync();
+
+        var @event = Event.Create(
+            organizerId: Guid.NewGuid(),
+            categoryId: new Guid("20000000-0000-0000-0000-000000000001"),
+            venueId: venue.Id,
+            title: "Public Concert To Cancel",
+            slug: "public-concert-to-cancel",
+            description: "Will be cancelled by admin",
+            startsAt: DateTime.UtcNow.AddDays(12),
+            endsAt: DateTime.UtcNow.AddDays(13));
+        @event.Approve();
+
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var listHandler = new ListEventsHandler(_db);
+        var beforeCancel = await listHandler.HandleAsync(new ListEventsQuery(PageSize: 100));
+        Assert.True(beforeCancel.IsSuccess);
+        Assert.Contains(beforeCancel.Value!.Items, item => item.Id == @event.Id);
+
+        var statusHandler = new ChangeEventStatusHandler(_db);
+        var cancelResult = await statusHandler.CancelAsync(@event.Id, organizerId: null, isAdmin: true, reason: "Hủy khẩn cấp");
+        Assert.True(cancelResult.IsSuccess);
+
+        var afterCancel = await listHandler.HandleAsync(new ListEventsQuery(PageSize: 100));
+        Assert.True(afterCancel.IsSuccess);
+        Assert.DoesNotContain(afterCancel.Value!.Items, item => item.Id == @event.Id);
+    }
 }
 
 // ── Test Implementations cho liên lạc liên module ──────────────

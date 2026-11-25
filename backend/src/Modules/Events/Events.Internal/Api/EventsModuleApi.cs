@@ -32,6 +32,7 @@ internal sealed class EventsModuleApi(
                 e.CoverImageKey,
                 e.StartsAt,
                 e.OrganizerId,
+                e.Status,
                 VenueName = e.Venue != null ? e.Venue.Name : string.Empty,
                 VenueCity = e.Venue != null ? e.Venue.City : string.Empty
             })
@@ -48,7 +49,8 @@ internal sealed class EventsModuleApi(
                 row.StartsAt,
                 row.VenueName,
                 row.VenueCity,
-                row.OrganizerId);
+                row.OrganizerId,
+                row.Status);
         }
 
         return result;
@@ -78,6 +80,7 @@ internal sealed class EventsModuleApi(
                 e.CoverImageKey,
                 e.StartsAt,
                 e.OrganizerId,
+                e.Status,
                 VenueName = e.Venue != null ? e.Venue.Name : string.Empty,
                 VenueCity = e.Venue != null ? e.Venue.City : string.Empty
             })
@@ -94,7 +97,8 @@ internal sealed class EventsModuleApi(
                 row.StartsAt,
                 row.VenueName,
                 row.VenueCity,
-                row.OrganizerId));
+                row.OrganizerId,
+                row.Status));
         }
 
         return result;

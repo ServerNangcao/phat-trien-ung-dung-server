@@ -95,7 +95,16 @@ internal sealed class TicketingService : ITicketingModuleApi
             }
         }
 
-        // 2. Kiểm tra điều kiện hạng vé & giới hạn số vé mỗi đơn trước khi trừ kho
+        // 2. Kiểm tra trạng thái sự kiện & hạng vé trước khi trừ kho
+        if (_eventsApi is not null)
+        {
+            var ev = await _eventsApi.GetEventByIdAsync(eventId, cancellationToken);
+            if (ev is null || !string.Equals(ev.Status, "OnSale", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Sự kiện đã bị hủy hoặc không còn mở bán.");
+            }
+        }
+
         var ticketType = await _db.TicketTypes
             .AsNoTracking()
             .FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, cancellationToken);

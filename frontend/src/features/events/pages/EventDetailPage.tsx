@@ -99,6 +99,8 @@ export function EventDetailPage() {
   if (eventQuery.isError || !rawEvent) return <PageMissing />;
 
   const event = rawEvent;
+  const isCancelled = event.status === "Cancelled";
+  const isUnavailable = isCancelled || event.status === "Ended" || event.status === "Rejected";
 
   return (
     <div className="mx-auto max-w-[1240px] page-enter px-5 pb-20 pt-7 lg:px-8">
@@ -128,6 +130,21 @@ export function EventDetailPage() {
 
       <div className="detail-layout">
         <article className="detail-content">
+          {isUnavailable && (
+            <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-800">
+              <p className="font-bold">
+                {isCancelled
+                  ? "Sự kiện này đã bị hủy."
+                  : event.status === "Ended"
+                    ? "Sự kiện này đã kết thúc."
+                    : "Sự kiện này hiện không khả dụng."}
+              </p>
+              {event.rejectReason && (
+                <p className="mt-1 text-xs text-rose-700">Lý do: {event.rejectReason}</p>
+              )}
+            </div>
+          )}
+
           <div className="organizer-line">
             <div className="organizer-avatar">{event.organizer.slice(0, 1)}</div>
             <div>
@@ -189,83 +206,103 @@ export function EventDetailPage() {
           <div className="ticket-panel-heading">
             <span>VÉ THAM DỰ</span>
             <div className="stock-status">
-              <i /> Đang mở bán
+              <i style={isUnavailable ? { background: "#c85042" } : undefined} />{" "}
+              {isCancelled ? "Đã hủy" : event.status === "Ended" ? "Đã kết thúc" : isUnavailable ? "Ngừng mở bán" : "Đang mở bán"}
             </div>
           </div>
-          <h2>
-            Chọn trải nghiệm
-            <br />
-            của bạn.
-          </h2>
 
-          <div className="tier-list">
-            {tiers.map((item) => (
-              <TicketTierOption
-                key={item.id}
-                tier={item}
-                selected={tier.id === item.id}
-                onSelect={() => {
-                  setSelectedTier(item.id);
-                  reserveMutation.reset();
-                }}
-              />
-            ))}
-          </div>
-
-          <div className="quantity-row">
-            <div>
-              <b>Số lượng vé</b>
-              <small>Tối đa {maxOrderLimit} vé / đơn</small>
+          {isUnavailable ? (
+            <div className="space-y-4 pt-2">
+              <h2>
+                {isCancelled ? "Sự kiện đã bị hủy." : "Sự kiện không còn mở bán."}
+              </h2>
+              <p className="text-sm text-[#526066]">
+                {isCancelled
+                  ? "Ban quản trị đã hủy sự kiện này nên hệ thống đã ngừng tiếp nhận giữ vé và đặt vé mới."
+                  : "Sự kiện này hiện đã đóng cổng bán vé."}
+              </p>
+              <Link to="/" className="btn-primary w-full justify-center">
+                Khám phá sự kiện khác <ArrowRight size={17} />
+              </Link>
             </div>
-            <div className="quantity-picker">
+          ) : (
+            <>
+              <h2>
+                Chọn trải nghiệm
+                <br />
+                của bạn.
+              </h2>
+
+              <div className="tier-list">
+                {tiers.map((item) => (
+                  <TicketTierOption
+                    key={item.id}
+                    tier={item}
+                    selected={tier.id === item.id}
+                    onSelect={() => {
+                      setSelectedTier(item.id);
+                      reserveMutation.reset();
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className="quantity-row">
+                <div>
+                  <b>Số lượng vé</b>
+                  <small>Tối đa {maxOrderLimit} vé / đơn</small>
+                </div>
+                <div className="quantity-picker">
+                  <button
+                    type="button"
+                    disabled={quantity <= 1}
+                    onClick={() => {
+                      setQuantity(quantity - 1);
+                      reserveMutation.reset();
+                    }}
+                    aria-label="Giảm số lượng"
+                  >
+                    <Minus size={15} />
+                  </button>
+                  <b>{quantity}</b>
+                  <button
+                    type="button"
+                    disabled={quantity >= maxOrderLimit || quantity >= tier.remaining}
+                    onClick={() => {
+                      setQuantity(quantity + 1);
+                      reserveMutation.reset();
+                    }}
+                    aria-label="Tăng số lượng"
+                  >
+                    <Plus size={15} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="total-row">
+                <span>Tổng cộng</span>
+                <b>{formatMoney(tier.price * quantity)}</b>
+              </div>
+
               <button
                 type="button"
-                disabled={quantity <= 1}
-                onClick={() => {
-                  setQuantity(quantity - 1);
-                  reserveMutation.reset();
-                }}
-                aria-label="Giảm số lượng"
+                className="btn-primary w-full justify-center"
+                disabled={reserveMutation.isPending}
+                onClick={() => reserveMutation.mutate()}
               >
-                <Minus size={15} />
+                {reserveMutation.isPending ? "Đang giữ vé..." : "Giữ vé & tiếp tục"}{" "}
+                <ArrowRight size={17} />
               </button>
-              <b>{quantity}</b>
-              <button
-                type="button"
-                disabled={quantity >= maxOrderLimit || quantity >= tier.remaining}
-                onClick={() => {
-                  setQuantity(quantity + 1);
-                  reserveMutation.reset();
-                }}
-                aria-label="Tăng số lượng"
-              >
-                <Plus size={15} />
-              </button>
-            </div>
-          </div>
 
-          <div className="total-row">
-            <span>Tổng cộng</span>
-            <b>{formatMoney(tier.price * quantity)}</b>
-          </div>
+              {reserveMutation.isError && (
+                <p className="form-error">{getReserveErrorMessage(reserveMutation.error)}</p>
+              )}
 
-          <button
-            type="button"
-            className="btn-primary w-full justify-center"
-            disabled={reserveMutation.isPending}
-            onClick={() => reserveMutation.mutate()}
-          >
-            {reserveMutation.isPending ? "Đang giữ vé..." : "Giữ vé & tiếp tục"}{" "}
-            <ArrowRight size={17} />
-          </button>
-
-          {reserveMutation.isError && (
-            <p className="form-error">{getReserveErrorMessage(reserveMutation.error)}</p>
+              <p className="secure-note">
+                <LockKeyhole size={13} /> Giữ vé miễn phí trong 10 phút
+              </p>
+            </>
           )}
-
-          <p className="secure-note">
-            <LockKeyhole size={13} /> Giữ vé miễn phí trong 10 phút
-          </p>
         </aside>
       </div>
     </div>

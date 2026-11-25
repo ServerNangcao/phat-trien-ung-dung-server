@@ -33,6 +33,22 @@ const DEFAULT_IMAGES = [
   "https://cdn.sukienbanve.id.vn/ceramic-sunday.jpg",
 ];
 
+const EVENT_STATUS_MAP: Record<string, ManagedEventStatus> = {
+  OnSale: "Published",
+  PendingApproval: "Pending",
+  Draft: "Draft",
+  Rejected: "Rejected",
+  Ended: "Ended",
+  Cancelled: "Cancelled",
+  Published: "Published",
+  Pending: "Pending",
+};
+
+function normalizeEventStatus(status?: string | null): ManagedEventStatus | undefined {
+  if (!status) return undefined;
+  return EVENT_STATUS_MAP[status] ?? (status as ManagedEventStatus);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeEvent(raw: any): EventItem {
   if (!raw) return raw;
@@ -94,6 +110,8 @@ function normalizeEvent(raw: any): EventItem {
     description: raw.description || "Thông tin chi tiết về sự kiện sẽ được ban tổ chức cập nhật sớm nhất.",
     organizer: raw.organizer || "Ban Tổ Chức",
     featured: Boolean(raw.featured),
+    status: normalizeEventStatus(raw.status),
+    rejectReason: raw.rejectReason ?? undefined,
     tiers,
   };
 }
@@ -363,15 +381,6 @@ export const ticketingApi = {
             ? `${startsAtDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })} · ${startsAtDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })}`
             : ev.startsAt;
 
-          const statusMap: Record<string, ManagedEventStatus> = {
-            OnSale: "Published",
-            PendingApproval: "Pending",
-            Draft: "Draft",
-            Rejected: "Rejected",
-            Ended: "Ended",
-            Cancelled: "Cancelled",
-          };
-
           return {
             id: ev.id,
             slug: ev.slug,
@@ -384,7 +393,7 @@ export const ticketingApi = {
             endsAt: ev.endsAt,
             organizer: "Ban Tổ Chức",
             verified: true,
-            status: statusMap[ev.status] ?? (ev.status as ManagedEventStatus),
+            status: normalizeEventStatus(ev.status) ?? "Draft",
             rejectReason: ev.rejectReason ?? undefined,
             description: ev.description || "",
             schedule: [],
@@ -455,14 +464,6 @@ export const ticketingApi = {
       });
 
       const rawItems = Array.isArray(data?.items) ? data.items : [];
-      const statusMap: Record<string, ManagedEventStatus> = {
-        OnSale: "Published",
-        PendingApproval: "Pending",
-        Draft: "Draft",
-        Rejected: "Rejected",
-        Ended: "Ended",
-        Cancelled: "Cancelled",
-      };
 
       return rawItems.map((ev) => {
         const startsAtDate = new Date(ev.startsAt);
@@ -482,7 +483,7 @@ export const ticketingApi = {
           endsAt: ev.endsAt,
           organizer: "Ban Tổ Chức",
           verified: true,
-          status: statusMap[ev.status] ?? (ev.status as ManagedEventStatus),
+          status: normalizeEventStatus(ev.status) ?? "Draft",
           rejectReason: ev.rejectReason ?? undefined,
           description: ev.description || "",
           schedule: [],
@@ -503,6 +504,13 @@ export const ticketingApi = {
         return;
       }
       await apiClient.post(`/api/events/${eventId}/reject`, { reason });
+    },
+    cancel: async (eventId: string, reason?: string): Promise<void> => {
+      if (isDemoMode) {
+        platformDemoApi.moderateEvent(eventId, "Cancelled", reason);
+        return;
+      }
+      await apiClient.post(`/api/events/${eventId}/cancel`, reason ? { reason } : {});
     },
   },
   refunds: {

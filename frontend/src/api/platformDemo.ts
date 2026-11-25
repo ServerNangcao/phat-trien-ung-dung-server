@@ -300,7 +300,7 @@ export const platformDemoApi = {
     );
     return writeStore(MANAGED_EVENTS_KEY, next);
   },
-  moderateEvent: (eventId: string, status: "Published" | "Rejected", rejectReason?: string): ManagedEvent[] => {
+  moderateEvent: (eventId: string, status: "Published" | "Rejected" | "Cancelled", rejectReason?: string): ManagedEvent[] => {
     const list = platformDemoApi.getManagedEvents();
     const next = list.map((ev) =>
       ev.id === eventId ? { ...ev, status, rejectReason } : ev,

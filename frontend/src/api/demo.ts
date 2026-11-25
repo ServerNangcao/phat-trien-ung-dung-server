@@ -1,4 +1,4 @@
-import { EVENT_PAGE_SIZE, type CheckoutInput, type EventItem, type PurchasedTicket, type Reservation } from "./types";
+import { EVENT_PAGE_SIZE, type CheckoutInput, type EventItem, type ManagedEvent, type PurchasedTicket, type Reservation } from "./types";
 
 const events: EventItem[] = [
   {
@@ -330,12 +330,28 @@ events.push(...additionalEvents);
 const reservationKey = "ticketing.demo.reservation";
 const ticketsKey = "ticketing.demo.tickets";
 const countKey = "ticketing.demo.checkinCount";
+const managedEventsKey = "ticketing.platform.managedEvents";
+
+function getManagedStatusMap(): Map<string, ManagedEvent> {
+  try {
+    const raw = localStorage.getItem(managedEventsKey);
+    const parsed = raw ? (JSON.parse(raw) as ManagedEvent[]) : [];
+    return new Map(Array.isArray(parsed) ? parsed.map((ev) => [ev.id, ev]) : []);
+  } catch {
+    return new Map();
+  }
+}
 
 export const demoApi = {
   async events(filters: { query?: string; category?: string; location?: string; maxPrice?: number; page?: number }) {
     await delay(120);
+    const managedMap = getManagedStatusMap();
     const query = filters.query?.trim().toLocaleLowerCase("vi");
     const filtered = events.filter((event) => {
+      const managed = managedMap.get(event.id);
+      if (managed && managed.status !== "Published" && managed.status !== "OnSale") {
+        return false;
+      }
       const minimumPrice = Math.min(...event.tiers.map((tier) => tier.price));
       return (!query || `${event.title} ${event.venue} ${event.organizer}`.toLocaleLowerCase("vi").includes(query))
         && (!filters.category || event.category === filters.category)
@@ -350,12 +366,24 @@ export const demoApi = {
   },
   async event(id: string) {
     await delay(100);
+    const managedMap = getManagedStatusMap();
+    const managed = managedMap.get(id);
     const event = events.find((item) => item.id === id);
     if (!event) throw new Error("Không tìm thấy sự kiện.");
+    if (managed) {
+      return {
+        ...event,
+        status: managed.status,
+        rejectReason: managed.rejectReason,
+      };
+    }
     return event;
   },
   async reserve(eventId: string, tierId: string, quantity: number): Promise<Reservation> {
     const event = await this.event(eventId);
+    if (event.status === "Cancelled" || event.status === "Rejected" || event.status === "Ended") {
+      throw new Error("Sự kiện đã bị hủy hoặc không còn mở bán.");
+    }
     const tier = event.tiers.find((item) => item.id === tierId);
     if (!tier || quantity < 1 || quantity > Math.min(6, tier.remaining)) throw new Error("Số lượng vé không hợp lệ.");
     const reservation = { id: crypto.randomUUID(), eventId, tierId, quantity, expiresAt: Date.now() + 10 * 60_000 };

@@ -1,3 +1,4 @@
+using Events.Contracts;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -246,5 +247,53 @@ public class TicketingReservationTests : IDisposable
         await db.Entry(ticketType).ReloadAsync();
         Assert.Equal(0, ticketType.ReservedQuantity);
         Assert.Equal(149, ticketType.AvailableQuantity);
+    }
+
+    [Fact]
+    public async Task ReserveAsync_WhenEventIsCancelled_ThrowsInvalidOperationException_WithoutDeductingStock()
+    {
+        using var db = new TicketingDbContext(_options);
+        var eventId = Guid.NewGuid();
+        var eventsApi = new StubEventsModuleApi(new EventBriefDto(
+            eventId,
+            "Cancelled Show",
+            null,
+            DateTime.UtcNow.AddDays(5),
+            "Venue",
+            "TP. Hồ Chí Minh",
+            Guid.NewGuid(),
+            "Cancelled"));
+
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance, eventsApi);
+
+        var ticketType = TicketType.Create(eventId, "Standard", 250000, 50, 4);
+        db.TicketTypes.Add(ticketType);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.ReserveAsync(Guid.NewGuid(), eventId, ticketType.Id, 2, Guid.NewGuid().ToString()));
+
+        Assert.Contains("hủy", ex.Message);
+
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(0, ticketType.ReservedQuantity);
+        Assert.Equal(50, ticketType.AvailableQuantity);
+    }
+
+    private sealed class StubEventsModuleApi(EventBriefDto? brief) : IEventsModuleApi
+    {
+        public Task<IReadOnlyDictionary<Guid, EventBriefDto>> GetEventsByIdsAsync(
+            IEnumerable<Guid> eventIds,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<Guid, EventBriefDto>>(
+                brief is null ? new Dictionary<Guid, EventBriefDto>() : new Dictionary<Guid, EventBriefDto> { [brief.Id] = brief });
+
+        public Task<EventBriefDto?> GetEventByIdAsync(Guid eventId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(brief is not null && brief.Id == eventId ? brief : null);
+
+        public Task<IReadOnlyList<EventBriefDto>> GetEventsByOrganizerAsync(
+            Guid organizerId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<EventBriefDto>>([]);
     }
 }

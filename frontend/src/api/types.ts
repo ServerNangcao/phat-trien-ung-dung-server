@@ -24,6 +24,8 @@ export interface EventItem {
   description: string;
   organizer: string;
   featured?: boolean;
+  status?: ManagedEventStatus;
+  rejectReason?: string;
   tiers: TicketTier[];
 }
 
