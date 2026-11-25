@@ -74,6 +74,8 @@ export function OrganizerBuilderPage() {
     }
   }, [venues, venueId, isLoadingVenues]);
 
+  const selectedVenue = venues.find((v) => v.id === venueId);
+
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -285,9 +287,21 @@ export function OrganizerBuilderPage() {
                   {venues.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.name} — {v.address}, {v.city}
+                      {v.capacity != null && v.capacity > 0
+                        ? ` (Sức chứa: ${new Intl.NumberFormat("vi-VN").format(v.capacity)})`
+                        : ""}
                     </option>
                   ))}
                 </select>
+                {selectedVenue?.capacity != null && selectedVenue.capacity > 0 && (
+                  <p className="mt-1.5 text-xs text-[#526066]">
+                    Sức chứa tối đa của địa điểm:{" "}
+                    <span className="font-semibold text-[#182226]">
+                      {new Intl.NumberFormat("vi-VN").format(selectedVenue.capacity)} khách
+                    </span>{" "}
+                    (tổng số vé các hạng không nên vượt quá giới hạn này).
+                  </p>
+                )}
               </div>
             ) : (
               <>

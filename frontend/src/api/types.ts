@@ -210,6 +210,7 @@ export interface ManagedEvent {
   category: EventCategory | string;
   city: string;
   venue: string;
+  venueCapacity?: number | null;
   date: string;
   startsAt?: string;
   endsAt?: string;

@@ -41,6 +41,9 @@ internal sealed class VenueHandler(EventsDbContext db)
         if (string.IsNullOrWhiteSpace(request.City))
             return Result.Validation<Guid>("Thành phố không được để trống.");
 
+        if (request.Capacity.HasValue && request.Capacity.Value <= 0)
+            return Result.Validation<Guid>("Sức chứa địa điểm phải lớn hơn 0.");
+
         var venue = Domain.Venue.Create(
             request.Name,
             request.Address,
