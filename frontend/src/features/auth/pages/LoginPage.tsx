@@ -274,7 +274,9 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
 
         <p>
           {mode === "login"
-            ? "Chọn vai trò để tiếp tục tới không gian phù hợp."
+            ? isDemoMode
+              ? "Chọn vai trò để tiếp tục tới không gian phù hợp."
+              : "Nhập email và mật khẩu để tiếp tục."
             : mode === "register"
               ? "Đăng ký tài khoản khách hàng để lưu và quản lý vé."
               : mode === "forgot"
@@ -282,7 +284,7 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
                 : "Nhập mã xác thực đã nhận cùng mật khẩu mới để hoàn tất khôi phục tài khoản."}
         </p>
 
-        {mode === "login" && (
+        {mode === "login" && isDemoMode && (
           <div className="role-selector sm:grid-cols-2">
             <button
               type="button"
