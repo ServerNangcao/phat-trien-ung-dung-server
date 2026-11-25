@@ -6,6 +6,7 @@ export interface TicketTier {
   name: string;
   price: number;
   remaining: number;
+  maxPerOrder?: number;
   description: string;
 }
 

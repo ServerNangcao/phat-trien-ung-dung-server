@@ -240,6 +240,10 @@ public static class TicketingModule
 
                 return Results.Created($"/api/reservations/{reservation.Id}", responseObj);
             }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new { error = ex.Message });
+            }
             catch (InvalidOperationException ex)
             {
                 return Results.Conflict(new { error = ex.Message });
@@ -251,6 +255,7 @@ public static class TicketingModule
             .WithTags("Ticketing")
             .RequireAuthorization()
             .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);
 
@@ -258,6 +263,8 @@ public static class TicketingModule
             .WithName("ReserveTicketsAlias")
             .WithTags("Ticketing")
             .RequireAuthorization()
+            .Produces(StatusCodes.Status201Created)
+            .Produces(StatusCodes.Status400BadRequest)
             .Produces(StatusCodes.Status201Created)
             .Produces(StatusCodes.Status401Unauthorized)
             .Produces(StatusCodes.Status409Conflict);

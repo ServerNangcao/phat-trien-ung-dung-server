@@ -161,6 +161,7 @@ export const ticketingApi = {
               name: t.name,
               price: t.price,
               remaining: t.quantityAvailable ?? t.capacity ?? 100,
+              maxPerOrder: Number(t.maxPerOrder ?? 4),
               description: `${t.name} (Tối đa ${t.maxPerOrder ?? 4} vé/đơn)`,
             }));
           }

@@ -225,4 +225,26 @@ public class TicketingReservationTests : IDisposable
         Assert.Equal(0, vipType.SoldQuantity);
         Assert.Equal(50, vipType.AvailableQuantity);
     }
+
+    [Fact]
+    public async Task ReserveAsync_ExceedingMaxPerOrder_ThrowsArgumentExceptionWithSpecificMessage()
+    {
+        using var db = new TicketingDbContext(_options);
+        var service = new TicketingService(db, new QrSigner(QrKey), NullLogger<TicketingService>.Instance);
+
+        var eventId = Guid.NewGuid();
+        var ticketType = TicketType.Create(eventId, "General admission", 290000, 149, 5);
+        db.TicketTypes.Add(ticketType);
+        await db.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.ReserveAsync(Guid.NewGuid(), eventId, ticketType.Id, 6, Guid.NewGuid().ToString()));
+
+        Assert.Contains("tối đa 5 vé", ex.Message);
+        Assert.Contains("General admission", ex.Message);
+
+        await db.Entry(ticketType).ReloadAsync();
+        Assert.Equal(0, ticketType.ReservedQuantity);
+        Assert.Equal(149, ticketType.AvailableQuantity);
+    }
 }

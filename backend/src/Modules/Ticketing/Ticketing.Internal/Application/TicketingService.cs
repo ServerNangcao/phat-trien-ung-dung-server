@@ -67,9 +67,9 @@ internal sealed class TicketingService : ITicketingModuleApi
         string idempotencyKey,
         CancellationToken cancellationToken = default)
     {
-        if (quantity is < 1 or > 20)
+        if (quantity < 1)
         {
-            throw new InvalidOperationException("Số vé mỗi đơn phải từ 1 đến 20.");
+            throw new ArgumentException("Số lượng vé mỗi đơn phải từ 1 trở lên.");
         }
 
         // 1. Chống trùng lặp (Idempotency) - Kiểm tra nếu yêu cầu đã tồn tại
@@ -95,7 +95,23 @@ internal sealed class TicketingService : ITicketingModuleApi
             }
         }
 
-        // 2. Trừ kho nguyên tử (Atomic Update) - Đảm bảo chỉ trừ khi còn đủ vé sẵn có
+        // 2. Kiểm tra điều kiện hạng vé & giới hạn số vé mỗi đơn trước khi trừ kho
+        var ticketType = await _db.TicketTypes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == ticketTypeId && t.EventId == eventId, cancellationToken);
+
+        if (ticketType is null || !ticketType.IsActive)
+        {
+            throw new ArgumentException("Hạng vé không tồn tại hoặc đã ngừng mở bán.");
+        }
+
+        if (quantity > ticketType.MaxPerOrder)
+        {
+            throw new ArgumentException(
+                $"Mỗi đơn hàng chỉ được đặt tối đa {ticketType.MaxPerOrder} vé cho hạng vé '{ticketType.Name}'.");
+        }
+
+        // 3. Trừ kho nguyên tử (Atomic Update) - Đảm bảo chỉ trừ khi còn đủ vé sẵn có
         await using var tx = await _db.Database.BeginTransactionAsync(cancellationToken);
         try
         {
@@ -113,11 +129,7 @@ internal sealed class TicketingService : ITicketingModuleApi
                 throw new InvalidOperationException("Không đủ vé hoặc vé đã hết.");
             }
 
-            var ticketType = await _db.TicketTypes
-                .AsNoTracking()
-                .FirstOrDefaultAsync(t => t.Id == ticketTypeId, cancellationToken);
-
-            var price = ticketType?.Price ?? 0;
+            var price = ticketType.Price;
 
             // 3. Thiết lập TTL 10 phút cho lượt giữ vé (Reservation 10p)
             var expiresAt = DateTime.UtcNow.AddMinutes(10);

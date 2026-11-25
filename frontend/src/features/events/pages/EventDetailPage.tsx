@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import axios from "axios";
 import {
   ArrowLeft,
   ArrowRight,
@@ -32,6 +33,19 @@ const formatDate = (date?: string) => {
 
 const DEFAULT_COVER = "https://cdn.sukienbanve.id.vn/midnight-jazz.jpg";
 
+function getReserveErrorMessage(err: unknown): string {
+  if (axios.isAxiosError(err)) {
+    if (err.response?.status === 401) {
+      return "Vui lòng đăng nhập để tiếp tục giữ vé.";
+    }
+    const data = err.response?.data as
+      | { error?: string; detail?: string; message?: string }
+      | undefined;
+    return data?.error || data?.detail || data?.message || "Không thể giữ vé. Vui lòng thử lại.";
+  }
+  return (err as Error)?.message || "Không thể giữ vé. Vui lòng thử lại.";
+}
+
 export function EventDetailPage() {
   const { id = "" } = useParams();
   const eventQuery = useQuery({
@@ -59,23 +73,32 @@ export function EventDetailPage() {
     },
   });
 
-  if (eventQuery.isLoading) return <PageLoading />;
-  if (eventQuery.isError || !eventQuery.data) return <PageMissing />;
-
-  const event = eventQuery.data;
+  const rawEvent = eventQuery.data;
   const tiers =
-    event.tiers && event.tiers.length > 0
-      ? event.tiers
+    rawEvent?.tiers && rawEvent.tiers.length > 0
+      ? rawEvent.tiers
       : [
           {
             id: "standard",
             name: "Vé tiêu chuẩn",
             price: 250000,
             remaining: 100,
+            maxPerOrder: 6,
             description: "Vé vào cổng tiêu chuẩn",
           },
         ];
   const tier = tiers.find((item) => item.id === selectedTier) ?? tiers[0];
+  const maxOrderLimit = tier.maxPerOrder ?? 6;
+  const maxSelectable = Math.max(1, Math.min(maxOrderLimit, tier.remaining));
+
+  useEffect(() => {
+    setQuantity((prev) => Math.min(Math.max(1, prev), maxSelectable));
+  }, [maxSelectable]);
+
+  if (eventQuery.isLoading) return <PageLoading />;
+  if (eventQuery.isError || !rawEvent) return <PageMissing />;
+
+  const event = rawEvent;
 
   return (
     <div className="mx-auto max-w-[1240px] page-enter px-5 pb-20 pt-7 lg:px-8">
@@ -181,7 +204,10 @@ export function EventDetailPage() {
                 key={item.id}
                 tier={item}
                 selected={tier.id === item.id}
-                onSelect={() => setSelectedTier(item.id)}
+                onSelect={() => {
+                  setSelectedTier(item.id);
+                  reserveMutation.reset();
+                }}
               />
             ))}
           </div>
@@ -189,13 +215,16 @@ export function EventDetailPage() {
           <div className="quantity-row">
             <div>
               <b>Số lượng vé</b>
-              <small>Tối đa 6 vé / đơn</small>
+              <small>Tối đa {maxOrderLimit} vé / đơn</small>
             </div>
             <div className="quantity-picker">
               <button
                 type="button"
                 disabled={quantity <= 1}
-                onClick={() => setQuantity(quantity - 1)}
+                onClick={() => {
+                  setQuantity(quantity - 1);
+                  reserveMutation.reset();
+                }}
                 aria-label="Giảm số lượng"
               >
                 <Minus size={15} />
@@ -203,8 +232,11 @@ export function EventDetailPage() {
               <b>{quantity}</b>
               <button
                 type="button"
-                disabled={quantity >= 6 || quantity >= tier.remaining}
-                onClick={() => setQuantity(quantity + 1)}
+                disabled={quantity >= maxOrderLimit || quantity >= tier.remaining}
+                onClick={() => {
+                  setQuantity(quantity + 1);
+                  reserveMutation.reset();
+                }}
                 aria-label="Tăng số lượng"
               >
                 <Plus size={15} />
@@ -228,7 +260,7 @@ export function EventDetailPage() {
           </button>
 
           {reserveMutation.isError && (
-            <p className="form-error">{(reserveMutation.error as Error).message}</p>
+            <p className="form-error">{getReserveErrorMessage(reserveMutation.error)}</p>
           )}
 
           <p className="secure-note">
