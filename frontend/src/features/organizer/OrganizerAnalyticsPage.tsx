@@ -18,6 +18,8 @@ const STATUS_LABEL: Record<string, string> = {
   Cancelled: "Đã hủy",
 };
 
+const HIDDEN_ANALYTICS_STATUSES = new Set(["Cancelled", "Rejected"]);
+
 export function OrganizerAnalyticsPage() {
   const {
     data: events = [],
@@ -37,13 +39,18 @@ export function OrganizerAnalyticsPage() {
     queryFn: () => ticketingApi.organizer.getOrders(),
   });
 
+  const visibleEvents = useMemo(
+    () => events.filter((ev) => !HIDDEN_ANALYTICS_STATUSES.has(ev.status)),
+    [events],
+  );
+
   const stats = useMemo(() => {
     let tierRevenue = 0;
     let totalSold = 0;
     let totalCapacity = 0;
     let totalReserved = 0;
 
-    for (const ev of events) {
+    for (const ev of visibleEvents) {
       for (const tier of ev.tiers) {
         tierRevenue += tier.sold * tier.price;
         totalSold += tier.sold;
@@ -65,7 +72,7 @@ export function OrganizerAnalyticsPage() {
       occupancy,
       paidOrdersCount: paidOrders.length,
     };
-  }, [events, orders]);
+  }, [visibleEvents, orders]);
 
   const isLoading = isLoadingEvents || isLoadingOrders;
   const isError = isEventsError || isOrdersError;
@@ -134,11 +141,15 @@ export function OrganizerAnalyticsPage() {
           <h2 className="text-base font-extrabold text-[#182226]">Doanh thu &amp; lấp đầy theo sự kiện</h2>
           {isLoadingEvents ? (
             <p className="mt-5 text-sm text-[#526066]">Đang tải danh sách sự kiện...</p>
-          ) : events.length === 0 ? (
+          ) : visibleEvents.length === 0 ? (
             <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-              <p className="text-sm font-semibold text-[#182226]">Tài khoản chưa có sự kiện nào</p>
+              <p className="text-sm font-semibold text-[#182226]">
+                {events.length === 0 ? "Tài khoản chưa có sự kiện nào" : "Chưa có sự kiện đang hoạt động"}
+              </p>
               <p className="mt-1 text-xs text-[#526066]">
-                Tạo sự kiện đầu tiên và mở bán hạng vé để bắt đầu ghi nhận doanh thu thật.
+                {events.length === 0
+                  ? "Tạo sự kiện đầu tiên và mở bán hạng vé để bắt đầu ghi nhận doanh thu thật."
+                  : "Các sự kiện đã bị hủy hoặc bị từ chối không được tính trong báo cáo doanh thu & lấp đầy."}
               </p>
               <Link to="/organizer/builder" className="btn-primary mt-4 inline-flex">
                 Tạo sự kiện đầu tiên <ArrowUpRight size={15} />
@@ -146,7 +157,7 @@ export function OrganizerAnalyticsPage() {
             </div>
           ) : (
             <div className="mt-5 space-y-5">
-              {events.map((ev) => {
+              {visibleEvents.map((ev) => {
                 const sold = ev.tiers.reduce((s, t) => s + t.sold, 0);
                 const total = ev.tiers.reduce((s, t) => s + t.total, 0);
                 const rev = ev.tiers.reduce((s, t) => s + t.sold * t.price, 0);

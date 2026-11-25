@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, Plus, X } from "lucide-react";
+import { AlertTriangle, Clock3, Plus, X } from "lucide-react";
 import { formatVnd } from "../../api/platformDemo";
 import { ticketingApi } from "../../api/service";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -9,6 +9,8 @@ import { OrganizerLayout } from "./OrganizerLayout";
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
+
+const INACTIVE_INVENTORY_STATUSES = new Set(["Cancelled", "Rejected", "Ended"]);
 
 export function OrganizerInventoryPage() {
   const queryClient = useQueryClient();
@@ -30,15 +32,27 @@ export function OrganizerInventoryPage() {
     maxPerOrder: 4,
   });
 
-  useEffect(() => {
-    if (initialEventId && events.some((e) => e.id === initialEventId)) {
-      setSelectedEventId(initialEventId);
-    } else if (!selectedEventId && events.length > 0) {
-      setSelectedEventId(events[0].id);
-    }
-  }, [events, initialEventId, selectedEventId]);
+  const activeEvents = useMemo(
+    () => events.filter((e) => !INACTIVE_INVENTORY_STATUSES.has(e.status)),
+    [events],
+  );
 
-  const currentEvent = events.find((e) => e.id === selectedEventId) ?? events[0];
+  useEffect(() => {
+    if (initialEventId && activeEvents.some((e) => e.id === initialEventId)) {
+      setSelectedEventId(initialEventId);
+    } else if ((!selectedEventId || !activeEvents.some((e) => e.id === selectedEventId)) && activeEvents.length > 0) {
+      setSelectedEventId(activeEvents[0].id);
+    }
+  }, [activeEvents, initialEventId, selectedEventId]);
+
+  const currentEvent = activeEvents.find((e) => e.id === selectedEventId) ?? activeEvents[0];
+  const allocatedTotal = currentEvent ? currentEvent.tiers.reduce((sum, t) => sum + t.total, 0) : 0;
+  const venueCapacity = currentEvent?.venueCapacity ?? null;
+  const hasVenueCapacity = venueCapacity != null && venueCapacity > 0;
+  const remainingCapacity = hasVenueCapacity ? venueCapacity - allocatedTotal : null;
+  const isOverCapacity = hasVenueCapacity && allocatedTotal > venueCapacity;
+  const projectedTotal = allocatedTotal + (Number.isFinite(tierForm.total) ? tierForm.total : 0);
+  const wouldExceedCapacity = hasVenueCapacity && projectedTotal > venueCapacity;
 
   const createTierMutation = useMutation({
     mutationFn: async () => {
@@ -69,6 +83,13 @@ export function OrganizerInventoryPage() {
 
   const handleAddTier = (event: FormEvent) => {
     event.preventDefault();
+    if (hasVenueCapacity && projectedTotal > venueCapacity) {
+      const remaining = Math.max(0, venueCapacity - allocatedTotal);
+      setFormError(
+        `Tổng số lượng vé phát hành (${projectedTotal.toLocaleString("vi-VN")}) vượt quá sức chứa địa điểm (${venueCapacity.toLocaleString("vi-VN")}). Còn có thể thêm tối đa ${remaining.toLocaleString("vi-VN")} vé.`,
+      );
+      return;
+    }
     setFormError(null);
     createTierMutation.mutate();
   };
@@ -80,7 +101,10 @@ export function OrganizerInventoryPage() {
       action={
         <button
           type="button"
-          onClick={() => setShowModal(true)}
+          onClick={() => {
+            setFormError(null);
+            setShowModal(true);
+          }}
           disabled={!currentEvent}
           className="btn-primary disabled:opacity-50"
         >
@@ -98,10 +122,16 @@ export function OrganizerInventoryPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-[#526066]">
           Đang tải danh sách sự kiện &amp; hạng vé...
         </div>
-      ) : events.length === 0 ? (
+      ) : activeEvents.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-          <p className="text-base font-bold text-[#182226]">Bạn chưa có sự kiện nào</p>
-          <p className="mt-1 text-xs text-[#526066]">Hãy tạo sự kiện trước khi thiết lập các hạng vé mở bán.</p>
+          <p className="text-base font-bold text-[#182226]">
+            {events.length === 0 ? "Bạn chưa có sự kiện nào" : "Chưa có sự kiện đang hoạt động để cấu hình hạng vé"}
+          </p>
+          <p className="mt-1 text-xs text-[#526066]">
+            {events.length === 0
+              ? "Hãy tạo sự kiện trước khi thiết lập các hạng vé mở bán."
+              : "Các sự kiện đã bị hủy, bị từ chối hoặc đã kết thúc được ẩn khỏi màn hình quản lý hạng vé."}
+          </p>
           <Link to="/organizer/builder" className="btn-primary mt-4 inline-flex">
             Tạo sự kiện mới
           </Link>
@@ -119,18 +149,51 @@ export function OrganizerInventoryPage() {
                 onChange={(e) => setSelectedEventId(e.target.value)}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#182226]"
               >
-                {events.map((ev) => (
+                {activeEvents.map((ev) => (
                   <option key={ev.id} value={ev.id}>
                     {ev.title}
                   </option>
                 ))}
               </select>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
-              <Clock3 size={14} />
-              <span>Cơ chế giữ chỗ tự động nhả kho sau 10:00 nếu chưa thanh toán</span>
+            <div className="flex flex-wrap items-center gap-2">
+              {currentEvent && (
+                <div
+                  className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold ${
+                    isOverCapacity
+                      ? "border-rose-300 bg-rose-50 text-rose-800"
+                      : "border-slate-200 bg-slate-50 text-[#182226]"
+                  }`}
+                >
+                  {isOverCapacity && <AlertTriangle size={14} />}
+                  <span>
+                    Đã phân bổ:{" "}
+                    {hasVenueCapacity
+                      ? `${allocatedTotal.toLocaleString("vi-VN")} / ${venueCapacity.toLocaleString("vi-VN")} sức chứa`
+                      : `${allocatedTotal.toLocaleString("vi-VN")} vé`}
+                  </span>
+                  {hasVenueCapacity && !isOverCapacity && remainingCapacity !== null && (
+                    <span className="text-[#526066]">
+                      (còn {remainingCapacity.toLocaleString("vi-VN")} vé)
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                <Clock3 size={14} />
+                <span>Cơ chế giữ chỗ tự động nhả kho sau 10:00 nếu chưa thanh toán</span>
+              </div>
             </div>
           </div>
+
+          {currentEvent && isOverCapacity && (
+            <div className="mb-6 flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+              <AlertTriangle size={16} className="shrink-0" />
+              <span>
+                Cảnh báo: Tổng số lượng vé phát hành ({allocatedTotal.toLocaleString("vi-VN")}) đang vượt quá sức chứa địa điểm ({venueCapacity?.toLocaleString("vi-VN")}).
+              </span>
+            </div>
+          )}
 
           {currentEvent && (
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white text-[#182226]">
@@ -140,7 +203,14 @@ export function OrganizerInventoryPage() {
                   <p className="mt-1 text-xs text-[#526066]">
                     Thêm ít nhất 1 hạng vé để khách hàng có thể đặt chỗ khi sự kiện được duyệt mở bán.
                   </p>
-                  <button type="button" onClick={() => setShowModal(true)} className="btn-primary mt-4 inline-flex">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormError(null);
+                      setShowModal(true);
+                    }}
+                    className="btn-primary mt-4 inline-flex"
+                  >
                     <Plus size={15} /> Thêm hạng vé đầu tiên
                   </button>
                 </div>
@@ -213,10 +283,31 @@ export function OrganizerInventoryPage() {
               </button>
             </div>
 
+            {hasVenueCapacity && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-[#526066]">
+                Sức chứa địa điểm:{" "}
+                <span className="font-bold text-[#182226]">{venueCapacity.toLocaleString("vi-VN")}</span> · Đã phân bổ:{" "}
+                <span className="font-bold text-[#182226]">{allocatedTotal.toLocaleString("vi-VN")}</span> · Còn lại:{" "}
+                <span className="font-bold text-emerald-700">
+                  {Math.max(0, remainingCapacity ?? 0).toLocaleString("vi-VN")} vé
+                </span>
+              </div>
+            )}
+
             {formError && (
               <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
                 {formError}
               </p>
+            )}
+
+            {wouldExceedCapacity && (
+              <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-700" />
+                <span>
+                  Tổng vé sau khi thêm ({projectedTotal.toLocaleString("vi-VN")}) sẽ vượt quá sức chứa địa điểm (
+                  {venueCapacity?.toLocaleString("vi-VN")}).
+                </span>
+              </div>
             )}
 
             <div>

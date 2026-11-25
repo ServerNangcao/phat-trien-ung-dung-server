@@ -1,10 +1,13 @@
+using System.Security.Claims;
 using Events.Internal.Api;
 using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
 using Events.Internal.Infrastructure.Storage;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Ticketing.Internal.Api;
 using Ticketing.Internal.Application;
 using Ticketing.Internal.Domain;
 using Ticketing.Internal.Infrastructure;
@@ -86,6 +89,7 @@ public sealed class EventsModuleApiAndTicketsTests : IDisposable
         Assert.Equal(startsAt, dto.StartsAt);
         Assert.Equal("The Global City", dto.VenueName);
         Assert.Equal("TP. Hồ Chí Minh", dto.VenueCity);
+        Assert.Equal(5000, dto.VenueCapacity);
 
         Assert.NotNull(single);
         Assert.Equal(dto, single);
@@ -202,6 +206,133 @@ public sealed class EventsModuleApiAndTicketsTests : IDisposable
 
         Assert.Equal(2, orderTickets.Count);
         Assert.All(orderTickets, t => Assert.Equal("The Sound of Spring", t.EventTitle));
+    }
+
+    [Fact]
+    public async Task CreateTicketTypeAsync_RejectsWhenTotalQuantityExceedsVenueCapacity()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var venue = Venue.Create("Complex 01", "Tây Hồ", "Hà Nội", capacity: 350);
+        _eventsDb.Venues.Add(venue);
+        await _eventsDb.SaveChangesAsync();
+
+        var ev = Event.Create(
+            organizerId,
+            CategoryMusicId,
+            venue.Id,
+            title: "Acoustic Night",
+            slug: "acoustic-night-capacity",
+            description: "Đêm nhạc giới hạn chỗ",
+            startsAt: DateTime.UtcNow.AddDays(10),
+            endsAt: DateTime.UtcNow.AddDays(10).AddHours(3));
+        _eventsDb.Events.Add(ev);
+        await _eventsDb.SaveChangesAsync();
+
+        var eventsApi = new EventsModuleApi(_eventsDb);
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, organizerId.ToString()),
+                new Claim(ClaimTypes.Role, "Organizer")
+            ], "TestAuth"))
+        };
+
+        // Act 1: 200 <= 350 -> 201 Created
+        var firstResult = await TicketingModule.CreateTicketTypeAsync(
+            context,
+            ev.Id,
+            new CreateTicketTypeRequest("Standard", 250_000m, 200, 4),
+            _ticketingDb,
+            eventsApi,
+            CancellationToken.None);
+
+        var firstStatus = Assert.IsAssignableFrom<IStatusCodeHttpResult>(firstResult);
+        Assert.Equal(StatusCodes.Status201Created, firstStatus.StatusCode);
+
+        // Act 2: 200 + 200 = 400 > 350 -> 400 BadRequest
+        var overResult = await TicketingModule.CreateTicketTypeAsync(
+            context,
+            ev.Id,
+            new CreateTicketTypeRequest("VIP", 500_000m, 200, 4),
+            _ticketingDb,
+            eventsApi,
+            CancellationToken.None);
+
+        var overStatus = Assert.IsAssignableFrom<IStatusCodeHttpResult>(overResult);
+        Assert.Equal(StatusCodes.Status400BadRequest, overStatus.StatusCode);
+
+        var count = await _ticketingDb.TicketTypes.CountAsync(t => t.EventId == ev.Id);
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public async Task CreateTicketTypeAsync_RejectsWhenEventIsCancelledOrRejected()
+    {
+        // Arrange
+        var organizerId = Guid.NewGuid();
+        var venue = Venue.Create("Complex 01", "Tây Hồ", "Hà Nội", capacity: 350);
+        _eventsDb.Venues.Add(venue);
+        await _eventsDb.SaveChangesAsync();
+
+        var cancelledEvent = Event.Create(
+            organizerId,
+            CategoryMusicId,
+            venue.Id,
+            title: "Cancelled Event",
+            slug: "cancelled-event-ticket-type",
+            description: "Sự kiện đã hủy",
+            startsAt: DateTime.UtcNow.AddDays(10),
+            endsAt: DateTime.UtcNow.AddDays(10).AddHours(3));
+        cancelledEvent.Cancel("Hủy bởi Admin");
+
+        var rejectedEvent = Event.Create(
+            organizerId,
+            CategoryMusicId,
+            venue.Id,
+            title: "Rejected Event",
+            slug: "rejected-event-ticket-type",
+            description: "Sự kiện bị từ chối",
+            startsAt: DateTime.UtcNow.AddDays(12),
+            endsAt: DateTime.UtcNow.AddDays(12).AddHours(3));
+        rejectedEvent.SubmitForApproval();
+        rejectedEvent.Reject("Không đạt yêu cầu");
+
+        _eventsDb.Events.AddRange(cancelledEvent, rejectedEvent);
+        await _eventsDb.SaveChangesAsync();
+
+        var eventsApi = new EventsModuleApi(_eventsDb);
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimTypes.NameIdentifier, organizerId.ToString()),
+                new Claim(ClaimTypes.Role, "Organizer")
+            ], "TestAuth"))
+        };
+
+        // Act
+        var cancelledResult = await TicketingModule.CreateTicketTypeAsync(
+            context,
+            cancelledEvent.Id,
+            new CreateTicketTypeRequest("Standard", 200_000m, 50, 4),
+            _ticketingDb,
+            eventsApi,
+            CancellationToken.None);
+
+        var rejectedResult = await TicketingModule.CreateTicketTypeAsync(
+            context,
+            rejectedEvent.Id,
+            new CreateTicketTypeRequest("Standard", 200_000m, 50, 4),
+            _ticketingDb,
+            eventsApi,
+            CancellationToken.None);
+
+        // Assert
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsAssignableFrom<IStatusCodeHttpResult>(cancelledResult).StatusCode);
+        Assert.Equal(StatusCodes.Status409Conflict, Assert.IsAssignableFrom<IStatusCodeHttpResult>(rejectedResult).StatusCode);
+        Assert.Equal(0, await _ticketingDb.TicketTypes.CountAsync(t => t.EventId == cancelledEvent.Id || t.EventId == rejectedEvent.Id));
     }
 
     private sealed class FakeR2StorageService(string presignedUrl) : IR2StorageService

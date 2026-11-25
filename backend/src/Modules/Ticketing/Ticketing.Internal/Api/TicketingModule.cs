@@ -93,102 +93,23 @@ public static class TicketingModule
         .Produces<IReadOnlyList<TicketTypeDto>>(StatusCodes.Status200OK);
 
         // 2. FR-10: Tạo hạng vé mới (Organizer/Admin)
-        group.MapPost("/events/{eventId:guid}/ticket-types", async (
+        group.MapPost("/events/{eventId:guid}/ticket-types", (
             HttpContext context,
             Guid eventId,
             CreateTicketTypeRequest request,
             TicketingDbContext db,
             IEventsModuleApi eventsApi,
             CancellationToken ct) =>
-        {
-            var isAdmin = context.User.IsInRole("Admin");
-            if (!context.User.IsInRole("Organizer") && !isAdmin)
-            {
-                return Results.Forbid();
-            }
-
-            if (!isAdmin)
-            {
-                var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
-                               context.User.FindFirstValue("sub") ??
-                               context.User.FindFirstValue("id");
-
-                if (!Guid.TryParse(subClaim, out var organizerId) || organizerId == Guid.Empty)
-                {
-                    return Results.Unauthorized();
-                }
-
-                var ev = await eventsApi.GetEventByIdAsync(eventId, ct);
-                if (ev is null)
-                {
-                    return Results.NotFound(new { error = "Sự kiện không tồn tại." });
-                }
-
-                if (ev.OrganizerId != Guid.Empty && ev.OrganizerId != organizerId)
-                {
-                    return Results.Forbid();
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(request.Name) ||
-                request.Price < 0 ||
-                request.TotalQuantity <= 0 ||
-                request.MaxPerOrder <= 0 ||
-                request.MaxPerOrder > request.TotalQuantity)
-            {
-                return Results.BadRequest(new { error = "Dữ liệu hạng vé không hợp lệ." });
-            }
-
-            var ticketType = TicketType.Create(
-                eventId,
-                request.Name,
-                request.Price,
-                request.TotalQuantity,
-                request.MaxPerOrder,
-                request.SaleStartsAt,
-                request.SaleEndsAt);
-
-            db.TicketTypes.Add(ticketType);
-
-            // Bắn integration event cập nhật dải giá min/max sang module Events
-            var existingPrices = await db.TicketTypes
-                .Where(t => t.EventId == eventId && t.IsActive)
-                .Select(t => t.Price)
-                .ToListAsync(ct);
-
-            existingPrices.Add(request.Price);
-
-            db.AddOutboxMessage(new TicketTypesChangedIntegrationEvent
-            {
-                TargetEventId = eventId,
-                MinPrice = existingPrices.Min(),
-                MaxPrice = existingPrices.Max()
-            });
-
-            await db.SaveChangesAsync(ct);
-
-            return Results.Created($"/api/events/{eventId}/ticket-types/{ticketType.Id}", new
-            {
-                ticketType.Id,
-                ticketType.EventId,
-                ticketType.Name,
-                ticketType.Price,
-                capacity = ticketType.TotalQuantity,
-                ticketType.TotalQuantity,
-                quantityAvailable = ticketType.AvailableQuantity,
-                ticketType.AvailableQuantity,
-                ticketType.SoldQuantity,
-                ticketType.ReservedQuantity,
-                ticketType.MaxPerOrder
-            });
-        })
+            CreateTicketTypeAsync(context, eventId, request, db, eventsApi, ct))
         .WithName("CreateTicketType")
         .WithTags("Ticketing")
         .RequireAuthorization()
         .Produces(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status401Unauthorized)
-        .Produces(StatusCodes.Status403Forbidden);
+        .Produces(StatusCodes.Status403Forbidden)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
 
         // 3. FR-11: Giữ vé tạm thời 10 phút (Customer)
         Func<HttpContext, ReserveTicketsRequest, ITicketingModuleApi, CancellationToken, Task<IResult>> handleReservation = async (
@@ -350,6 +271,123 @@ public static class TicketingModule
         .Produces(StatusCodes.Status409Conflict);
 
         return app;
+    }
+
+    internal static async Task<IResult> CreateTicketTypeAsync(
+        HttpContext context,
+        Guid eventId,
+        CreateTicketTypeRequest request,
+        TicketingDbContext db,
+        IEventsModuleApi eventsApi,
+        CancellationToken ct)
+    {
+        var isAdmin = context.User.IsInRole("Admin");
+        if (!context.User.IsInRole("Organizer") && !isAdmin)
+        {
+            return Results.Forbid();
+        }
+
+        Guid organizerId = Guid.Empty;
+        if (!isAdmin)
+        {
+            var subClaim = context.User.FindFirstValue(ClaimTypes.NameIdentifier) ??
+                           context.User.FindFirstValue("sub") ??
+                           context.User.FindFirstValue("id");
+
+            if (!Guid.TryParse(subClaim, out organizerId) || organizerId == Guid.Empty)
+            {
+                return Results.Unauthorized();
+            }
+        }
+
+        var ev = await eventsApi.GetEventByIdAsync(eventId, ct);
+        if (ev is null)
+        {
+            return Results.NotFound(new { error = "Sự kiện không tồn tại." });
+        }
+
+        if (!isAdmin && ev.OrganizerId != Guid.Empty && ev.OrganizerId != organizerId)
+        {
+            return Results.Forbid();
+        }
+
+        if (string.Equals(ev.Status, "Cancelled", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ev.Status, "Rejected", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ev.Status, "Ended", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Conflict(new
+            {
+                error = "Không thể thêm hạng vé cho sự kiện đã bị hủy, bị từ chối hoặc đã kết thúc."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Name) ||
+            request.Price < 0 ||
+            request.TotalQuantity <= 0 ||
+            request.MaxPerOrder <= 0 ||
+            request.MaxPerOrder > request.TotalQuantity)
+        {
+            return Results.BadRequest(new { error = "Dữ liệu hạng vé không hợp lệ." });
+        }
+
+        if (ev.VenueCapacity is int venueCapacity && venueCapacity > 0)
+        {
+            var currentAllocated = await db.TicketTypes
+                .Where(t => t.EventId == eventId && t.IsActive)
+                .SumAsync(t => t.TotalQuantity, ct);
+
+            if (currentAllocated + request.TotalQuantity > venueCapacity)
+            {
+                var remainingCapacity = Math.Max(0, venueCapacity - currentAllocated);
+                return Results.BadRequest(new
+                {
+                    error = $"Tổng số lượng vé phát hành ({currentAllocated + request.TotalQuantity}) vượt quá sức chứa địa điểm ({venueCapacity}). Còn có thể thêm tối đa {remainingCapacity} vé."
+                });
+            }
+        }
+
+        var ticketType = TicketType.Create(
+            eventId,
+            request.Name,
+            request.Price,
+            request.TotalQuantity,
+            request.MaxPerOrder,
+            request.SaleStartsAt,
+            request.SaleEndsAt);
+
+        db.TicketTypes.Add(ticketType);
+
+        // Bắn integration event cập nhật dải giá min/max sang module Events
+        var existingPrices = await db.TicketTypes
+            .Where(t => t.EventId == eventId && t.IsActive)
+            .Select(t => t.Price)
+            .ToListAsync(ct);
+
+        existingPrices.Add(request.Price);
+
+        db.AddOutboxMessage(new TicketTypesChangedIntegrationEvent
+        {
+            TargetEventId = eventId,
+            MinPrice = existingPrices.Min(),
+            MaxPrice = existingPrices.Max()
+        });
+
+        await db.SaveChangesAsync(ct);
+
+        return Results.Created($"/api/events/{eventId}/ticket-types/{ticketType.Id}", new
+        {
+            ticketType.Id,
+            ticketType.EventId,
+            ticketType.Name,
+            ticketType.Price,
+            capacity = ticketType.TotalQuantity,
+            ticketType.TotalQuantity,
+            quantityAvailable = ticketType.AvailableQuantity,
+            ticketType.AvailableQuantity,
+            ticketType.SoldQuantity,
+            ticketType.ReservedQuantity,
+            ticketType.MaxPerOrder
+        });
     }
 
     internal static async Task<IResult> GetMyTicketsAsync(
