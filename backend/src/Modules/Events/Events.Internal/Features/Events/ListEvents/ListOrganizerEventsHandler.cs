@@ -30,8 +30,7 @@ internal sealed record OrganizerEventSummaryResponse(
     string VenueName,
     string VenueCity,
     DateTime CreatedAt,
-    string? Description = null,
-    int? VenueCapacity = null);
+    string? Description = null);
 
 internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
 {
@@ -87,8 +86,7 @@ internal sealed class ListOrganizerEventsHandler(EventsDbContext db)
                 e.Venue.Name,
                 e.Venue.City,
                 e.CreatedAt,
-                e.Description,
-                e.Venue.Capacity))
+                e.Description))
             .ToListAsync(cancellationToken);
 
         var result = new PagedResult<OrganizerEventSummaryResponse>(

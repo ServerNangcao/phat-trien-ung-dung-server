@@ -338,7 +338,6 @@ export const ticketingApi = {
           categoryName: string;
           venueName: string;
           venueCity: string;
-          venueCapacity?: number | null;
           description?: string | null;
         }>;
       }>("/api/events/mine", { params: { page: 1, pageSize: 100 } });
@@ -389,7 +388,6 @@ export const ticketingApi = {
             category: ev.categoryName || "Âm nhạc",
             city: ev.venueCity || "",
             venue: ev.venueName || "",
-            venueCapacity: ev.venueCapacity ?? null,
             date: formattedDate,
             startsAt: ev.startsAt,
             endsAt: ev.endsAt,
@@ -459,7 +457,6 @@ export const ticketingApi = {
           categoryName: string;
           venueName: string;
           venueCity: string;
-          venueCapacity?: number | null;
           description?: string | null;
         }>;
       }>("/api/events/admin", {
@@ -481,7 +478,6 @@ export const ticketingApi = {
           category: ev.categoryName || "Âm nhạc",
           city: ev.venueCity || "",
           venue: ev.venueName || "",
-          venueCapacity: ev.venueCapacity ?? null,
           date: formattedDate,
           startsAt: ev.startsAt,
           endsAt: ev.endsAt,

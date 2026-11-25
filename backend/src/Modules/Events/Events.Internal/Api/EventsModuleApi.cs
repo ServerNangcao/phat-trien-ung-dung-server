@@ -34,8 +34,7 @@ internal sealed class EventsModuleApi(
                 e.OrganizerId,
                 e.Status,
                 VenueName = e.Venue != null ? e.Venue.Name : string.Empty,
-                VenueCity = e.Venue != null ? e.Venue.City : string.Empty,
-                VenueCapacity = e.Venue != null ? e.Venue.Capacity : (int?)null
+                VenueCity = e.Venue != null ? e.Venue.City : string.Empty
             })
             .ToListAsync(cancellationToken);
 
@@ -51,8 +50,7 @@ internal sealed class EventsModuleApi(
                 row.VenueName,
                 row.VenueCity,
                 row.OrganizerId,
-                row.Status,
-                row.VenueCapacity);
+                row.Status);
         }
 
         return result;
@@ -84,8 +82,7 @@ internal sealed class EventsModuleApi(
                 e.OrganizerId,
                 e.Status,
                 VenueName = e.Venue != null ? e.Venue.Name : string.Empty,
-                VenueCity = e.Venue != null ? e.Venue.City : string.Empty,
-                VenueCapacity = e.Venue != null ? e.Venue.Capacity : (int?)null
+                VenueCity = e.Venue != null ? e.Venue.City : string.Empty
             })
             .ToListAsync(cancellationToken);
 
@@ -101,8 +98,7 @@ internal sealed class EventsModuleApi(
                 row.VenueName,
                 row.VenueCity,
                 row.OrganizerId,
-                row.Status,
-                row.VenueCapacity));
+                row.Status));
         }
 
         return result;

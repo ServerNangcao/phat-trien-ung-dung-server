@@ -1,13 +1,10 @@
-using System.Security.Claims;
 using Events.Internal.Api;
 using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
 using Events.Internal.Infrastructure.Storage;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Ticketing.Internal.Api;
 using Ticketing.Internal.Application;
 using Ticketing.Internal.Domain;
 using Ticketing.Internal.Infrastructure;
@@ -89,7 +86,6 @@ public sealed class EventsModuleApiAndTicketsTests : IDisposable
         Assert.Equal(startsAt, dto.StartsAt);
         Assert.Equal("The Global City", dto.VenueName);
         Assert.Equal("TP. Hồ Chí Minh", dto.VenueCity);
-        Assert.Equal(5000, dto.VenueCapacity);
 
         Assert.NotNull(single);
         Assert.Equal(dto, single);
@@ -206,65 +202,6 @@ public sealed class EventsModuleApiAndTicketsTests : IDisposable
 
         Assert.Equal(2, orderTickets.Count);
         Assert.All(orderTickets, t => Assert.Equal("The Sound of Spring", t.EventTitle));
-    }
-
-    [Fact]
-    public async Task CreateTicketTypeAsync_RejectsWhenTotalQuantityExceedsVenueCapacity()
-    {
-        // Arrange
-        var organizerId = Guid.NewGuid();
-        var venue = Venue.Create("Complex 01", "Tây Hồ", "Hà Nội", capacity: 350);
-        _eventsDb.Venues.Add(venue);
-        await _eventsDb.SaveChangesAsync();
-
-        var ev = Event.Create(
-            organizerId,
-            CategoryMusicId,
-            venue.Id,
-            title: "Acoustic Night",
-            slug: "acoustic-night-capacity",
-            description: "Đêm nhạc giới hạn chỗ",
-            startsAt: DateTime.UtcNow.AddDays(10),
-            endsAt: DateTime.UtcNow.AddDays(10).AddHours(3));
-        _eventsDb.Events.Add(ev);
-        await _eventsDb.SaveChangesAsync();
-
-        var eventsApi = new EventsModuleApi(_eventsDb);
-        var context = new DefaultHttpContext
-        {
-            User = new ClaimsPrincipal(new ClaimsIdentity(
-            [
-                new Claim(ClaimTypes.NameIdentifier, organizerId.ToString()),
-                new Claim(ClaimTypes.Role, "Organizer")
-            ], "TestAuth"))
-        };
-
-        // Act 1: 200 <= 350 -> 201 Created
-        var firstResult = await TicketingModule.CreateTicketTypeAsync(
-            context,
-            ev.Id,
-            new CreateTicketTypeRequest("Standard", 250_000m, 200, 4),
-            _ticketingDb,
-            eventsApi,
-            CancellationToken.None);
-
-        var firstStatus = Assert.IsAssignableFrom<IStatusCodeHttpResult>(firstResult);
-        Assert.Equal(StatusCodes.Status201Created, firstStatus.StatusCode);
-
-        // Act 2: 200 + 200 = 400 > 350 -> 400 BadRequest
-        var overResult = await TicketingModule.CreateTicketTypeAsync(
-            context,
-            ev.Id,
-            new CreateTicketTypeRequest("VIP", 500_000m, 200, 4),
-            _ticketingDb,
-            eventsApi,
-            CancellationToken.None);
-
-        var overStatus = Assert.IsAssignableFrom<IStatusCodeHttpResult>(overResult);
-        Assert.Equal(StatusCodes.Status400BadRequest, overStatus.StatusCode);
-
-        var count = await _ticketingDb.TicketTypes.CountAsync(t => t.EventId == ev.Id);
-        Assert.Equal(1, count);
     }
 
     private sealed class FakeR2StorageService(string presignedUrl) : IR2StorageService
