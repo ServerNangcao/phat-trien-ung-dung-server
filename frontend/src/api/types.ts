@@ -26,6 +26,7 @@ export interface EventItem {
   featured?: boolean;
   status?: ManagedEventStatus;
   rejectReason?: string;
+  ticketTypesLoadError?: boolean;
   tiers: TicketTier[];
 }
 

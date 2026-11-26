@@ -82,7 +82,10 @@ export function CheckoutPage() {
     },
     onSuccess: async (result) => {
       sessionStorage.removeItem("ticketing.reservation");
-      await queryClient.invalidateQueries({ queryKey: ["tickets"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tickets"] }),
+        queryClient.invalidateQueries({ queryKey: ["event", id] }),
+      ]);
       if (isDemoMode) navigate(result.paymentUrl);
       else window.location.assign(result.paymentUrl);
     },

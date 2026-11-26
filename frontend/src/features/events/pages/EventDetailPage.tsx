@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import {
   ArrowLeft,
@@ -17,6 +17,11 @@ import { ticketingApi } from "../../../api/service";
 import { PageLoading } from "../../../components/common/PageLoading";
 import { PageMissing } from "../../../components/common/PageMissing";
 import { TicketTierOption } from "../components/TicketTierOption";
+import {
+  computeMaxSelectableQuantity,
+  getEventStockSummary,
+  resolveSelectableTier,
+} from "../utils/ticket-stock";
 
 const currency = new Intl.NumberFormat("vi-VN");
 const formatMoney = (price: number) => `${currency.format(price)}đ`;
@@ -48,51 +53,54 @@ function getReserveErrorMessage(err: unknown): string {
 
 export function EventDetailPage() {
   const { id = "" } = useParams();
+  const queryClient = useQueryClient();
   const eventQuery = useQuery({
     queryKey: ["event", id],
     queryFn: () => ticketingApi.event(id),
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "Cancelled" || status === "Ended" || status === "Rejected" ? false : 15_000;
+    },
   });
 
   const [selectedTier, setSelectedTier] = useState("");
   const [quantity, setQuantity] = useState(1);
   const navigate = useNavigate();
 
+  const rawEvent = eventQuery.data;
+  const tiers = rawEvent?.tiers ?? [];
+  const tier = resolveSelectableTier(tiers, selectedTier);
+  const maxOrderLimit = tier?.maxPerOrder ?? 6;
+  const maxSelectable = computeMaxSelectableQuantity(tier);
+  const isSelectedTierSoldOut = !tier || tier.remaining <= 0;
+  const stockSummary = getEventStockSummary(rawEvent?.status, tiers);
+
   const reserveMutation = useMutation({
     mutationFn: () => {
       const eventData = eventQuery.data;
-      const tierId = selectedTier || eventData?.tiers[0]?.id;
-      if (!eventData || !tierId) throw new Error("Sự kiện chưa có hạng vé để đặt.");
-      return ticketingApi.reserve(eventData.rawId || eventData.id, tierId, quantity);
+      const targetTier = resolveSelectableTier(eventData?.tiers ?? [], selectedTier);
+      if (!eventData || !targetTier) throw new Error("Sự kiện chưa có hạng vé để đặt.");
+      if (targetTier.remaining <= 0) throw new Error("Hạng vé đã hết, không thể đặt.");
+      return ticketingApi.reserve(eventData.rawId || eventData.id, targetTier.id, quantity);
     },
     onSuccess: (reservation) => {
+      void queryClient.invalidateQueries({ queryKey: ["event", id] });
       sessionStorage.setItem(
         "ticketing.reservation",
         JSON.stringify({ ...reservation, eventSlug: id }),
       );
       navigate(`/checkout/${id}`);
     },
+    onError: () => {
+      void queryClient.invalidateQueries({ queryKey: ["event", id] });
+    },
   });
 
-  const rawEvent = eventQuery.data;
-  const tiers =
-    rawEvent?.tiers && rawEvent.tiers.length > 0
-      ? rawEvent.tiers
-      : [
-          {
-            id: "standard",
-            name: "Vé tiêu chuẩn",
-            price: 250000,
-            remaining: 100,
-            maxPerOrder: 6,
-            description: "Vé vào cổng tiêu chuẩn",
-          },
-        ];
-  const tier = tiers.find((item) => item.id === selectedTier) ?? tiers[0];
-  const maxOrderLimit = tier.maxPerOrder ?? 6;
-  const maxSelectable = Math.max(1, Math.min(maxOrderLimit, tier.remaining));
-
   useEffect(() => {
-    setQuantity((prev) => Math.min(Math.max(1, prev), maxSelectable));
+    setQuantity((prev) => (maxSelectable > 0 ? Math.min(Math.max(1, prev), maxSelectable) : 0));
   }, [maxSelectable]);
 
   if (eventQuery.isLoading) return <PageLoading />;
@@ -206,8 +214,14 @@ export function EventDetailPage() {
           <div className="ticket-panel-heading">
             <span>VÉ THAM DỰ</span>
             <div className="stock-status">
-              <i style={isUnavailable ? { background: "#c85042" } : undefined} />{" "}
-              {isCancelled ? "Đã hủy" : event.status === "Ended" ? "Đã kết thúc" : isUnavailable ? "Ngừng mở bán" : "Đang mở bán"}
+              <i
+                style={
+                  stockSummary.isErrorTone || rawEvent.ticketTypesLoadError
+                    ? { background: "#c85042" }
+                    : undefined
+                }
+              />{" "}
+              {rawEvent.ticketTypesLoadError ? "Lỗi tải vé" : stockSummary.label}
             </div>
           </div>
 
@@ -220,6 +234,32 @@ export function EventDetailPage() {
                 {isCancelled
                   ? "Ban quản trị đã hủy sự kiện này nên hệ thống đã ngừng tiếp nhận giữ vé và đặt vé mới."
                   : "Sự kiện này hiện đã đóng cổng bán vé."}
+              </p>
+              <Link to="/" className="btn-primary w-full justify-center">
+                Khám phá sự kiện khác <ArrowRight size={17} />
+              </Link>
+            </div>
+          ) : rawEvent.ticketTypesLoadError ? (
+            <div className="space-y-4 pt-2">
+              <h2>Không thể tải thông tin hạng vé</h2>
+              <p className="text-sm text-[#526066]">
+                Không thể tải thông tin hạng vé và số lượng còn lại. Vui lòng thử lại.
+              </p>
+              <button
+                type="button"
+                className="btn-primary w-full justify-center"
+                onClick={() => {
+                  void eventQuery.refetch();
+                }}
+              >
+                Tải lại
+              </button>
+            </div>
+          ) : stockSummary.hasNoTiers ? (
+            <div className="space-y-4 pt-2">
+              <h2>Chưa có hạng vé mở bán</h2>
+              <p className="text-sm text-[#526066]">
+                Sự kiện này hiện chưa có hạng vé mở bán.
               </p>
               <Link to="/" className="btn-primary w-full justify-center">
                 Khám phá sự kiện khác <ArrowRight size={17} />
@@ -238,7 +278,7 @@ export function EventDetailPage() {
                   <TicketTierOption
                     key={item.id}
                     tier={item}
-                    selected={tier.id === item.id}
+                    selected={tier?.id === item.id}
                     onSelect={() => {
                       setSelectedTier(item.id);
                       reserveMutation.reset();
@@ -250,12 +290,16 @@ export function EventDetailPage() {
               <div className="quantity-row">
                 <div>
                   <b>Số lượng vé</b>
-                  <small>Tối đa {maxOrderLimit} vé / đơn</small>
+                  <small>
+                    {isSelectedTierSoldOut
+                      ? "Hạng vé này đã hết"
+                      : `Tối đa ${maxOrderLimit} vé / đơn`}
+                  </small>
                 </div>
                 <div className="quantity-picker">
                   <button
                     type="button"
-                    disabled={quantity <= 1}
+                    disabled={isSelectedTierSoldOut || quantity <= 1}
                     onClick={() => {
                       setQuantity(quantity - 1);
                       reserveMutation.reset();
@@ -267,7 +311,7 @@ export function EventDetailPage() {
                   <b>{quantity}</b>
                   <button
                     type="button"
-                    disabled={quantity >= maxOrderLimit || quantity >= tier.remaining}
+                    disabled={isSelectedTierSoldOut || quantity >= maxSelectable}
                     onClick={() => {
                       setQuantity(quantity + 1);
                       reserveMutation.reset();
@@ -281,17 +325,23 @@ export function EventDetailPage() {
 
               <div className="total-row">
                 <span>Tổng cộng</span>
-                <b>{formatMoney(tier.price * quantity)}</b>
+                <b>{formatMoney((tier?.price ?? 0) * quantity)}</b>
               </div>
 
               <button
                 type="button"
                 className="btn-primary w-full justify-center"
-                disabled={reserveMutation.isPending}
+                disabled={reserveMutation.isPending || isSelectedTierSoldOut || stockSummary.allSoldOut}
                 onClick={() => reserveMutation.mutate()}
               >
-                {reserveMutation.isPending ? "Đang giữ vé..." : "Giữ vé & tiếp tục"}{" "}
-                <ArrowRight size={17} />
+                {stockSummary.allSoldOut
+                  ? "Đã hết vé"
+                  : isSelectedTierSoldOut
+                    ? "Hạng vé đã hết"
+                    : reserveMutation.isPending
+                      ? "Đang giữ vé..."
+                      : "Giữ vé & tiếp tục"}{" "}
+                {!stockSummary.allSoldOut && !isSelectedTierSoldOut && <ArrowRight size={17} />}
               </button>
 
               {reserveMutation.isError && (

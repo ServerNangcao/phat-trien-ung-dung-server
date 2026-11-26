@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BadgeCheck, Ban, Calendar, Check, MapPin, X } from "lucide-react";
+import { BadgeCheck, Ban, Calendar, Check, MapPin, Ticket, X } from "lucide-react";
+import { formatVnd } from "../../api/platformDemo";
 import { ticketingApi } from "../../api/service";
 import type { ManagedEvent } from "../../api/types";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -66,8 +67,12 @@ export function AdminModerationPage() {
       setActionError(null);
       await invalidateEventQueries();
     },
-    onError: () => {
-      setActionError("Không thể duyệt sự kiện này (chỉ sự kiện ở trạng thái Chờ duyệt mới có thể duyệt).");
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { detail?: string; error?: string } } })?.response?.data?.detail ??
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        "Không thể duyệt sự kiện này (chỉ sự kiện ở trạng thái Chờ duyệt và đã có hạng vé mới có thể duyệt).";
+      setActionError(msg);
     },
   });
 
@@ -191,6 +196,32 @@ export function AdminModerationPage() {
                     <MapPin size={14} /> {ev.venue}
                     {ev.city ? `, ${ev.city}` : ""}
                   </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-[#526066]">
+                    <Ticket size={14} className="text-[#F05B45]" /> Hạng vé &amp; giá vé:
+                  </span>
+                  {ev.tiers.length > 0 ? (
+                    ev.tiers.map((tier) => (
+                      <span
+                        key={tier.id}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-[#182226]"
+                      >
+                        <span>{tier.name}</span>
+                        <span className="text-[#526066]">·</span>
+                        <span className="text-[#D94735]">
+                          {tier.price === 0 ? "Miễn phí" : formatVnd(tier.price)}
+                        </span>
+                        <span className="text-[#526066]">·</span>
+                        <span className="text-[#526066]">
+                          {tier.total.toLocaleString("vi-VN")} vé (tối đa {tier.maxPerOrder}/đơn)
+                        </span>
+                      </span>
+                    ))
+                  ) : (
+                    <StatusBadge tone="warning">Chưa có hạng vé &amp; giá vé</StatusBadge>
+                  )}
                 </div>
 
                 {(ev.status === "Rejected" || ev.status === "Cancelled") && ev.rejectReason && (

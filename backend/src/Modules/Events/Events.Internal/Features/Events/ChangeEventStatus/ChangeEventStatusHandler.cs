@@ -2,6 +2,7 @@ using Events.Internal.Domain;
 using Events.Internal.Infrastructure;
 using Events.Internal.Infrastructure.Caching;
 using Microsoft.EntityFrameworkCore;
+using Ticketing.Contracts;
 using Ticketing.SharedKernel;
 
 namespace Events.Internal.Features.Events.ChangeEventStatus;
@@ -11,7 +12,10 @@ namespace Events.Internal.Features.Events.ChangeEventStatus;
 /// Draft → PendingApproval → OnSale | Rejected → (sửa) → PendingApproval
 /// OnSale → Ended | Cancelled
 /// </summary>
-internal sealed class ChangeEventStatusHandler(EventsDbContext db, IEventsCacheService? cache = null)
+internal sealed class ChangeEventStatusHandler(
+    EventsDbContext db,
+    IEventsCacheService? cache = null,
+    ITicketingModuleApi? ticketingApi = null)
 {
     /// <summary>Organizer nộp sự kiện để duyệt.</summary>
     public async Task<Result> SubmitForApprovalAsync(
@@ -28,6 +32,13 @@ internal sealed class ChangeEventStatusHandler(EventsDbContext db, IEventsCacheS
 
         if (@event.Status != EventStatus.Draft && @event.Status != EventStatus.Rejected)
             return Result.Conflict($"Chỉ có thể nộp duyệt sự kiện ở trạng thái Draft hoặc Rejected. Hiện tại: {@event.Status}.");
+
+        if (ticketingApi is not null)
+        {
+            var ticketTypes = await ticketingApi.GetTypesAsync(eventId, cancellationToken);
+            if (ticketTypes.Count == 0)
+                return Result.Validation("Sự kiện phải có ít nhất 1 hạng vé và giá vé trước khi gửi Admin duyệt.");
+        }
 
         @event.SubmitForApproval();
         await db.SaveChangesAsync(cancellationToken);
@@ -49,6 +60,13 @@ internal sealed class ChangeEventStatusHandler(EventsDbContext db, IEventsCacheS
 
         if (@event.Status != EventStatus.PendingApproval)
             return Result.Conflict($"Chỉ có thể duyệt sự kiện ở trạng thái PendingApproval. Hiện tại: {@event.Status}.");
+
+        if (ticketingApi is not null)
+        {
+            var ticketTypes = await ticketingApi.GetTypesAsync(eventId, cancellationToken);
+            if (ticketTypes.Count == 0)
+                return Result.Conflict("Không thể duyệt sự kiện khi chưa có hạng vé nào.");
+        }
 
         @event.Approve();
         await db.SaveChangesAsync(cancellationToken);

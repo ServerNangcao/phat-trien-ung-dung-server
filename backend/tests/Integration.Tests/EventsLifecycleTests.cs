@@ -1,10 +1,15 @@
-﻿using Events.Internal.Domain;
+using Events.Internal.Domain;
 using Events.Internal.Features.Events.ChangeEventStatus;
 using Events.Internal.Features.Events.CreateEvent;
 using Events.Internal.Features.Events.UpdateEvent;
 using Events.Internal.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Ticketing.Contracts;
+using Ticketing.Internal.Application;
+using Ticketing.Internal.Domain;
+using Ticketing.Internal.Infrastructure;
 using Ticketing.SharedKernel;
 using Xunit;
 
@@ -129,7 +134,9 @@ public class EventsLifecycleTests : IDisposable
         Assert.Equal("Tiêu đề đã sửa", updatedInDraft.Title);
 
         // Chuyển sang OnSale (Draft → PendingApproval → OnSale)
-        var statusHandler = new ChangeEventStatusHandler(_db);
+        var statusHandler = new ChangeEventStatusHandler(
+            _db,
+            ticketingApi: new StubTicketingModuleApi([MakeTicketTypeDto(@event.Id)]));
         await statusHandler.SubmitForApprovalAsync(@event.Id, organizerId);
         await statusHandler.ApproveAsync(@event.Id);
 
@@ -152,7 +159,9 @@ public class EventsLifecycleTests : IDisposable
         _db.Events.Add(@event);
         await _db.SaveChangesAsync();
 
-        var handler = new ChangeEventStatusHandler(_db);
+        var handler = new ChangeEventStatusHandler(
+            _db,
+            ticketingApi: new StubTicketingModuleApi([MakeTicketTypeDto(@event.Id)]));
         var result = await handler.SubmitForApprovalAsync(@event.Id, organizerId);
         Assert.True(result.IsSuccess);
 
@@ -168,13 +177,15 @@ public class EventsLifecycleTests : IDisposable
     {
         var venue = await SeedVenueAsync("Cung Văn hóa Hữu Nghị");
         var organizerId = Guid.NewGuid();
-        var handler = new ChangeEventStatusHandler(_db);
 
         var @event = MakeEvent(organizerId, CategoryId, venue.Id, "approve");
         @event.SubmitForApproval();
         _db.Events.Add(@event);
         await _db.SaveChangesAsync();
 
+        var handler = new ChangeEventStatusHandler(
+            _db,
+            ticketingApi: new StubTicketingModuleApi([MakeTicketTypeDto(@event.Id)]));
         var approveResult = await handler.ApproveAsync(@event.Id);
         Assert.True(approveResult.IsSuccess);
 
@@ -392,5 +403,147 @@ public class EventsLifecycleTests : IDisposable
         var result = await handler.SubmitForApprovalAsync(@event.Id, otherUser);
         Assert.False(result.IsSuccess);
         Assert.Equal(ErrorCodes.Forbidden, result.ErrorCode);
+    }
+
+    // ── Bổ sung: Chặn nộp duyệt khi chưa có hạng vé & giá vé ────
+    [Fact]
+    public async Task SubmitForApproval_Without_TicketTypes_Returns_Validation()
+    {
+        var venue = await SeedVenueAsync("Nhà hát Bến Thành");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db, ticketingApi: new StubTicketingModuleApi([]));
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "no-tiers-submit");
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var result = await handler.SubmitForApprovalAsync(@event.Id, organizerId);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.Validation, result.ErrorCode);
+
+        _db.ChangeTracker.Clear();
+        var unchanged = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(unchanged);
+        Assert.Equal(EventStatus.Draft, unchanged.Status);
+    }
+
+    // ── Bổ sung: Chặn Admin duyệt khi chưa có hạng vé & giá vé ──
+    [Fact]
+    public async Task Approve_Without_TicketTypes_Returns_Conflict()
+    {
+        var venue = await SeedVenueAsync("Nhà hát Hòa Bình");
+        var organizerId = Guid.NewGuid();
+        var handler = new ChangeEventStatusHandler(_db, ticketingApi: new StubTicketingModuleApi([]));
+
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "no-tiers-approve");
+        @event.SubmitForApproval();
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var result = await handler.ApproveAsync(@event.Id);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.Conflict, result.ErrorCode);
+
+        _db.ChangeTracker.Clear();
+        var unchanged = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(unchanged);
+        Assert.Equal(EventStatus.PendingApproval, unchanged.Status);
+    }
+
+    // ── Bổ sung: Tích hợp thực tế với TicketingService ───────────
+    [Fact]
+    public async Task SubmitForApproval_And_Approve_With_Real_TicketingService_Requires_TicketType_First()
+    {
+        await using var ticketingConn = new SqliteConnection("DataSource=:memory:");
+        await ticketingConn.OpenAsync();
+        var ticketingOptions = new DbContextOptionsBuilder<TicketingDbContext>()
+            .UseSqlite(ticketingConn)
+            .Options;
+
+        await using var ticketingDb = new TicketingDbContext(ticketingOptions);
+        await ticketingDb.Database.EnsureCreatedAsync();
+
+        var ticketingService = new TicketingService(
+            ticketingDb,
+            new QrSigner(new string('k', 32)),
+            NullLogger<TicketingService>.Instance);
+
+        var venue = await SeedVenueAsync("Trung tâm Sự kiện Gem Center");
+        var organizerId = Guid.NewGuid();
+        var @event = MakeEvent(organizerId, CategoryId, venue.Id, "real-ticketing");
+        _db.Events.Add(@event);
+        await _db.SaveChangesAsync();
+
+        var handler = new ChangeEventStatusHandler(_db, cache: null, ticketingApi: ticketingService);
+
+        // Chưa có hạng vé -> không thể gửi duyệt
+        var failedSubmit = await handler.SubmitForApprovalAsync(@event.Id, organizerId);
+        Assert.False(failedSubmit.IsSuccess);
+        Assert.Equal(ErrorCodes.Validation, failedSubmit.ErrorCode);
+
+        // Thêm hạng vé & giá vé vào TicketingDbContext
+        ticketingDb.TicketTypes.Add(TicketType.Create(@event.Id, "Standard", 250_000m, 100, 4));
+        await ticketingDb.SaveChangesAsync();
+
+        // Đã có hạng vé -> gửi duyệt và Admin duyệt đều thành công
+        var submitResult = await handler.SubmitForApprovalAsync(@event.Id, organizerId);
+        Assert.True(submitResult.IsSuccess);
+
+        var approveResult = await handler.ApproveAsync(@event.Id);
+        Assert.True(approveResult.IsSuccess);
+
+        _db.ChangeTracker.Clear();
+        var approved = await _db.Events.AsNoTracking().FirstOrDefaultAsync(e => e.Id == @event.Id);
+        Assert.NotNull(approved);
+        Assert.Equal(EventStatus.OnSale, approved.Status);
+    }
+
+    private static TicketTypeDto MakeTicketTypeDto(
+        Guid eventId,
+        string name = "Standard",
+        decimal price = 250_000m,
+        int capacity = 100,
+        int maxPerOrder = 4) =>
+        new(Guid.NewGuid(), eventId, name, price, capacity, capacity, maxPerOrder);
+
+    private sealed class StubTicketingModuleApi(IReadOnlyList<TicketTypeDto> types) : ITicketingModuleApi
+    {
+        public Task<IReadOnlyList<TicketTypeDto>> GetTypesAsync(Guid eventId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(types);
+
+        public Task<ReservationDto> ReserveAsync(Guid customerId, Guid eventId, Guid ticketTypeId, int quantity, string idempotencyKey, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<ReservationDto?> GetReservationAsync(Guid id, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task MarkPaymentPendingAsync(Guid id, Guid customerId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task ReleaseAsync(Guid id, Guid customerId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<RedeemTicketResult> RedeemTicketAsync(string qrPayload, Guid eventId, string staffId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<TicketDto>> GetTicketsByOrderIdsAsync(IEnumerable<Guid> orderIds, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<TicketDto>> GetMyTicketsAsync(Guid customerId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<int> GetTotalIssuedTicketsCountAsync(Guid eventId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<TicketTypeSummaryDto>> GetTicketTypesByEventIdAsync(Guid eventId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<IReadOnlyList<TicketDto>> IssueTicketsForOrderAsync(Guid orderId, Guid eventId, Guid customerId, string customerEmail, string customerName, string eventTitle, Guid ticketTypeId, string ticketTypeName, decimal unitPrice, int quantity, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task<int> CancelTicketsForOrderAsync(Guid orderId, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
     }
 }

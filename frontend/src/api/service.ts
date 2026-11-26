@@ -1,6 +1,7 @@
 import { apiClient, isDemoMode } from "./client";
 import { demoApi } from "./demo";
 import { platformDemoApi } from "./platformDemo";
+import { mapApiTicketTypesToTiers, type RawApiTicketType } from "../features/events/utils/ticket-stock";
 import type {
   AdminUserItem,
   AuthResponse,
@@ -49,8 +50,41 @@ function normalizeEventStatus(status?: string | null): ManagedEventStatus | unde
   return EVENT_STATUS_MAP[status] ?? (status as ManagedEventStatus);
 }
 
+async function fetchEventTicketTiers(eventId: string): Promise<ManagedTicketTier[]> {
+  try {
+    const { data: rawTiers } = await apiClient.get<
+      Array<{
+        id: string;
+        name: string;
+        price: number;
+        capacity: number;
+        quantityAvailable: number;
+        maxPerOrder: number;
+        soldQuantity?: number;
+        reservedQuantity?: number;
+      }>
+    >(`/api/events/${eventId}/ticket-types`);
+
+    if (!Array.isArray(rawTiers)) return [];
+
+    return rawTiers.map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: `Tối đa ${t.maxPerOrder} vé/đơn`,
+      price: Number(t.price ?? 0),
+      total: Number(t.capacity ?? 0),
+      sold: Number(t.soldQuantity ?? 0),
+      reserved: Number(t.reservedQuantity ?? 0),
+      available: Number(t.quantityAvailable ?? 0),
+      maxPerOrder: Number(t.maxPerOrder ?? 4),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeEvent(raw: any): EventItem {
+function normalizeEvent(raw: any, options?: { useFallbackTiers?: boolean }): EventItem {
   if (!raw) return raw;
 
   const startsAt = raw.startsAt ? new Date(raw.startsAt) : null;
@@ -66,10 +100,11 @@ function normalizeEvent(raw: any): EventItem {
 
   const minPrice = raw.minPrice ?? 0;
   const maxPrice = raw.maxPrice ?? minPrice;
+  const useFallbackTiers = options?.useFallbackTiers ?? true;
 
   const existingTiers = Array.isArray(raw.tiers) ? raw.tiers : [];
   const tiers: TicketTier[] =
-    existingTiers.length > 0
+    existingTiers.length > 0 || !useFallbackTiers
       ? existingTiers
       : [
           {
@@ -112,6 +147,7 @@ function normalizeEvent(raw: any): EventItem {
     featured: Boolean(raw.featured),
     status: normalizeEventStatus(raw.status),
     rejectReason: raw.rejectReason ?? undefined,
+    ticketTypesLoadError: Boolean(raw.ticketTypesLoadError),
     tiers,
   };
 }
@@ -152,7 +188,7 @@ export const ticketingApi = {
     try {
       const { data } = await apiClient.get<{ items?: unknown[]; totalCount?: number; total?: number }>("/api/events", { params });
       const rawItems = Array.isArray(data?.items) ? data.items : [];
-      const items = rawItems.map(normalizeEvent);
+      const items = rawItems.map((item) => normalizeEvent(item));
       return {
         items,
         total: data?.totalCount ?? data?.total ?? items.length,
@@ -171,23 +207,17 @@ export const ticketingApi = {
       const { data } = await apiClient.get<any>(url);
       if (data?.id) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: ticketTypes } = await apiClient.get<any[]>(`/api/events/${data.id}/ticket-types`);
-          if (Array.isArray(ticketTypes) && ticketTypes.length > 0) {
-            data.tiers = ticketTypes.map((t) => ({
-              id: t.id,
-              name: t.name,
-              price: t.price,
-              remaining: t.quantityAvailable ?? t.capacity ?? 100,
-              maxPerOrder: Number(t.maxPerOrder ?? 4),
-              description: `${t.name} (Tối đa ${t.maxPerOrder ?? 4} vé/đơn)`,
-            }));
-          }
-        } catch {
-          // Fallback if ticket-types call fails
+          const { data: ticketTypes } = await apiClient.get<RawApiTicketType[]>(
+            `/api/events/${data.id}/ticket-types`,
+          );
+          data.tiers = Array.isArray(ticketTypes) ? mapApiTicketTypesToTiers(ticketTypes) : [];
+        } catch (ticketErr) {
+          console.warn(`[TicketingApi] Không thể tải hạng vé cho sự kiện "${data.id}":`, ticketErr);
+          data.tiers = [];
+          data.ticketTypesLoadError = true;
         }
       }
-      return normalizeEvent(data);
+      return normalizeEvent(data, { useFallbackTiers: false });
     } catch (error) {
       console.warn(`[TicketingApi] Không tìm thấy sự kiện "${id}" trên Backend, dùng dữ liệu Demo:`, error);
       return demoApi.event(id);
@@ -346,36 +376,7 @@ export const ticketingApi = {
       const rawItems = Array.isArray(data?.items) ? data.items : [];
       const enriched = await Promise.all(
         rawItems.map(async (ev): Promise<ManagedEvent> => {
-          let tiers: ManagedTicketTier[] = [];
-          try {
-            const { data: rawTiers } = await apiClient.get<
-              Array<{
-                id: string;
-                name: string;
-                price: number;
-                capacity: number;
-                quantityAvailable: number;
-                maxPerOrder: number;
-                soldQuantity?: number;
-                reservedQuantity?: number;
-              }>
-            >(`/api/events/${ev.id}/ticket-types`);
-            if (Array.isArray(rawTiers)) {
-              tiers = rawTiers.map((t) => ({
-                id: t.id,
-                name: t.name,
-                description: `Tối đa ${t.maxPerOrder} vé/đơn`,
-                price: Number(t.price ?? 0),
-                total: Number(t.capacity ?? 0),
-                sold: Number(t.soldQuantity ?? 0),
-                reserved: Number(t.reservedQuantity ?? 0),
-                available: Number(t.quantityAvailable ?? 0),
-                maxPerOrder: Number(t.maxPerOrder ?? 4),
-              }));
-            }
-          } catch {
-            tiers = [];
-          }
+          const tiers = await fetchEventTicketTiers(ev.id);
 
           const startsAtDate = new Date(ev.startsAt);
           const formattedDate = !isNaN(startsAtDate.getTime())
@@ -448,6 +449,7 @@ export const ticketingApi = {
     list: async (status?: string): Promise<ManagedEvent[]> => {
       if (isDemoMode) return platformDemoApi.getManagedEvents();
       const { data } = await apiClient.get<{
+
         items?: Array<{
           id: string;
           title: string;
@@ -468,32 +470,35 @@ export const ticketingApi = {
 
       const rawItems = Array.isArray(data?.items) ? data.items : [];
 
-      return rawItems.map((ev) => {
-        const startsAtDate = new Date(ev.startsAt);
-        const formattedDate = !isNaN(startsAtDate.getTime())
-          ? `${startsAtDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })} · ${startsAtDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })}`
-          : ev.startsAt;
+      return Promise.all(
+        rawItems.map(async (ev): Promise<ManagedEvent> => {
+          const tiers = await fetchEventTicketTiers(ev.id);
+          const startsAtDate = new Date(ev.startsAt);
+          const formattedDate = !isNaN(startsAtDate.getTime())
+            ? `${startsAtDate.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" })} · ${startsAtDate.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", hour12: false })}`
+            : ev.startsAt;
 
-        return {
-          id: ev.id,
-          slug: ev.slug,
-          title: ev.title,
-          category: ev.categoryName || "Âm nhạc",
-          city: ev.venueCity || "",
-          venue: ev.venueName || "",
-          venueCapacity: ev.venueCapacity ?? null,
-          date: formattedDate,
-          startsAt: ev.startsAt,
-          endsAt: ev.endsAt,
-          organizer: "Ban Tổ Chức",
-          verified: true,
-          status: normalizeEventStatus(ev.status) ?? "Draft",
-          rejectReason: ev.rejectReason ?? undefined,
-          description: ev.description || "",
-          schedule: [],
-          tiers: [],
-        };
-      });
+          return {
+            id: ev.id,
+            slug: ev.slug,
+            title: ev.title,
+            category: ev.categoryName || "Âm nhạc",
+            city: ev.venueCity || "",
+            venue: ev.venueName || "",
+            venueCapacity: ev.venueCapacity ?? null,
+            date: formattedDate,
+            startsAt: ev.startsAt,
+            endsAt: ev.endsAt,
+            organizer: "Ban Tổ Chức",
+            verified: true,
+            status: normalizeEventStatus(ev.status) ?? "Draft",
+            rejectReason: ev.rejectReason ?? undefined,
+            description: ev.description || "",
+            schedule: [],
+            tiers,
+          };
+        }),
+      );
     },
     approve: async (eventId: string): Promise<void> => {
       if (isDemoMode) {

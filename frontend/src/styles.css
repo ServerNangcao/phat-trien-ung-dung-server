@@ -241,12 +241,14 @@ button:disabled { cursor: not-allowed; opacity: .48; }
 .tier-list { display: grid; gap: 8px; }
 .tier-option { display: grid; grid-template-columns: 17px 1fr auto; align-items: center; gap: 9px; width: 100%; padding: 11px; border: 1px solid var(--surface-border); border-radius: 8px; background: #ffffff; text-align: left; }
 .tier-option.selected { border-color: var(--accent); background: #fffaf7; box-shadow: 0 0 0 1px rgba(240, 91, 69, 0.16); }
+.tier-option.sold-out { opacity: 0.58; cursor: not-allowed; background: #f8fafc; }
 .radio-mark { display: grid; place-items: center; width: 15px; height: 15px; border: 1px solid #c9cecb; border-radius: 50%; color: white; }
 .radio-mark.checked { border-color: var(--accent); background: var(--accent); }
 .tier-desc { display: grid; gap: 3px; }
 .tier-desc b { color: var(--surface-text); font-size: 12px; }
 .tier-desc small { color: var(--surface-muted); font-size: 10px; }
 .tier-desc small.low-stock { color: #c85c2d; }
+.tier-desc small.sold-out-text { color: #b91c1c; font-weight: 700; }
 .tier-price { font-size: 12px; white-space: nowrap; color: var(--surface-text); }
 .quantity-row, .total-row { display: flex; align-items: center; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid var(--surface-border); }
 .quantity-row>div:first-child { display: grid; gap: 3px; }

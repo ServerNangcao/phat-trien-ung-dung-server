@@ -1,8 +1,9 @@
 import { Check } from "lucide-react";
 import type { TicketTier } from "../../../api/types";
+import { formatRemainingTickets } from "../utils/ticket-stock";
 
 const currency = new Intl.NumberFormat("vi-VN");
-const formatMoney = (price: number) => `${currency.format(price)}đ`;
+const formatMoney = (price: number) => (price === 0 ? "Miễn phí" : `${currency.format(price)}đ`);
 
 interface TicketTierOptionProps {
   tier: TicketTier;
@@ -11,25 +12,30 @@ interface TicketTierOptionProps {
 }
 
 export function TicketTierOption({ tier, selected, onSelect }: TicketTierOptionProps) {
+  const isSoldOut = tier.remaining <= 0;
+  const stock = formatRemainingTickets(tier.remaining);
+  const stockClass =
+    stock.tone === "sold-out" ? "sold-out-text" : stock.tone === "low" ? "low-stock" : "";
+
   return (
     <button
       type="button"
-      className={`tier-option ${selected ? "selected" : ""}`}
-      onClick={onSelect}
+      disabled={isSoldOut}
+      aria-disabled={isSoldOut}
+      className={`tier-option ${selected && !isSoldOut ? "selected" : ""} ${isSoldOut ? "sold-out" : ""}`}
+      onClick={() => {
+        if (!isSoldOut) onSelect();
+      }}
     >
-      <span className={`radio-mark ${selected ? "checked" : ""}`}>
-        {selected && <Check size={12} />}
+      <span className={`radio-mark ${selected && !isSoldOut ? "checked" : ""}`}>
+        {selected && !isSoldOut && <Check size={12} />}
       </span>
       <span className="tier-desc">
         <b>{tier.name}</b>
         <small>{tier.description}</small>
-        <small className={tier.remaining < 25 ? "low-stock" : ""}>
-          {tier.remaining < 25 ? "Chỉ còn " : ""}
-          {tier.remaining} vé
-        </small>
+        <small className={stockClass}>{stock.label}</small>
       </span>
       <b className="tier-price">{formatMoney(tier.price)}</b>
     </button>
   );
 }
-

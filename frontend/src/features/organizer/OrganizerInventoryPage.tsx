@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Clock3, Plus, X } from "lucide-react";
+import { AlertTriangle, Clock3, Plus, Send, X } from "lucide-react";
 import { formatVnd } from "../../api/platformDemo";
 import { ticketingApi } from "../../api/service";
 import { StatusBadge } from "../../components/ui/StatusBadge";
@@ -25,6 +25,7 @@ export function OrganizerInventoryPage() {
   const [selectedEventId, setSelectedEventId] = useState(initialEventId);
   const [showModal, setShowModal] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [submitMessage, setSubmitMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [tierForm, setTierForm] = useState({
     name: "",
     price: 250000,
@@ -78,6 +79,28 @@ export function OrganizerInventoryPage() {
         (err as { message?: string })?.message ??
         "Không thể thêm hạng vé.";
       setFormError(msg);
+    },
+  });
+
+  const submitEventMutation = useMutation({
+    mutationFn: async (eventId: string) => {
+      await ticketingApi.organizer.submitEvent(eventId);
+    },
+    onSuccess: async () => {
+      setSubmitMessage({ tone: "success", text: "Đã gửi sự kiện kèm hạng vé & giá vé cho Admin duyệt." });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["organizer", "events"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "events"] }),
+      ]);
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { detail?: string; error?: string } }; message?: string })?.response?.data
+          ?.detail ??
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+        (err as { message?: string })?.message ??
+        "Không thể gửi sự kiện duyệt.";
+      setSubmitMessage({ tone: "error", text: msg });
     },
   });
 
@@ -146,7 +169,10 @@ export function OrganizerInventoryPage() {
               <select
                 id="inv-event"
                 value={currentEvent?.id ?? ""}
-                onChange={(e) => setSelectedEventId(e.target.value)}
+                onChange={(e) => {
+                  setSubmitMessage(null);
+                  setSelectedEventId(e.target.value);
+                }}
                 className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-[#182226]"
               >
                 {activeEvents.map((ev) => (
@@ -157,6 +183,25 @@ export function OrganizerInventoryPage() {
               </select>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {currentEvent?.status === "Draft" && (
+                <button
+                  type="button"
+                  disabled={currentEvent.tiers.length === 0 || submitEventMutation.isPending}
+                  title={
+                    currentEvent.tiers.length === 0
+                      ? "Thêm ít nhất 1 hạng vé trước khi gửi Admin duyệt."
+                      : "Gửi sự kiện cho Admin kiểm duyệt"
+                  }
+                  onClick={() => {
+                    setSubmitMessage(null);
+                    submitEventMutation.mutate(currentEvent.id);
+                  }}
+                  className="btn-primary !py-2 !px-3.5 text-xs disabled:opacity-50"
+                >
+                  <Send size={14} />
+                  {submitEventMutation.isPending ? "Đang gửi duyệt..." : "Gửi Admin duyệt"}
+                </button>
+              )}
               {currentEvent && (
                 <div
                   className={`inline-flex items-center gap-2 rounded-xl border px-3 py-1.5 text-xs font-semibold ${
@@ -185,6 +230,24 @@ export function OrganizerInventoryPage() {
               </div>
             </div>
           </div>
+
+          {currentEvent?.status === "Draft" && currentEvent.tiers.length === 0 && (
+            <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+              Thêm ít nhất 1 hạng vé &amp; giá vé trước khi gửi Admin duyệt.
+            </div>
+          )}
+
+          {submitMessage && (
+            <div
+              className={`mb-4 rounded-2xl border px-4 py-3 text-xs font-semibold ${
+                submitMessage.tone === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-rose-200 bg-rose-50 text-rose-700"
+              }`}
+            >
+              {submitMessage.text}
+            </div>
+          )}
 
           {currentEvent && isOverCapacity && (
             <div className="mb-6 flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">

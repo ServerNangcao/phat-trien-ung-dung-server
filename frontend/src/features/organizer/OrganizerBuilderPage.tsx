@@ -1,9 +1,18 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Calendar, Check, CloudUpload, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, Calendar, Check, CloudUpload, Plus, Ticket, Trash2 } from "lucide-react";
+import { formatVnd } from "../../api/platformDemo";
 import { ticketingApi } from "../../api/service";
 import { OrganizerLayout } from "./OrganizerLayout";
+
+interface DraftTicketTier {
+  id: string;
+  name: string;
+  price: number;
+  totalQuantity: number;
+  maxPerOrder: number;
+}
 
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-[#182226] outline-none transition-colors focus:border-[#F05B45] focus-visible:ring-2 focus-visible:ring-[#F05B45]/25";
@@ -40,7 +49,7 @@ export function OrganizerBuilderPage() {
     queryFn: () => ticketingApi.organizer.getVenues(),
   });
 
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [title, setTitle] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [venueMode, setVenueMode] = useState<"existing" | "new">("existing");
@@ -55,10 +64,15 @@ export function OrganizerBuilderPage() {
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [posterName, setPosterName] = useState("");
   const [posterPreview, setPosterPreview] = useState("");
+  const [ticketTiers, setTicketTiers] = useState<DraftTicketTier[]>([
+    { id: "tier-1", name: "Standard", price: 250000, totalQuantity: 100, maxPerOrder: 4 },
+  ]);
   const [schedule, setSchedule] = useState<Array<{ id: string; time: string; title: string; desc: string }>>([
     { id: "slot-1", time: "18:30", title: "Đón khách & Check-in", desc: "Quét mã QR tại cổng" },
   ]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const createdDraftEventId = useRef<string | null>(null);
+  const createdTierIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!categoryId && categories.length > 0) {
@@ -75,6 +89,48 @@ export function OrganizerBuilderPage() {
   }, [venues, venueId, isLoadingVenues]);
 
   const selectedVenue = venues.find((v) => v.id === venueId);
+  const effectiveCapacity =
+    venueMode === "existing"
+      ? (selectedVenue?.capacity ?? null)
+      : newVenueCapacity > 0
+        ? newVenueCapacity
+        : null;
+  const hasEffectiveCapacity = effectiveCapacity != null && effectiveCapacity > 0;
+  const totalAllocatedTickets = ticketTiers.reduce(
+    (sum, t) => sum + (Number.isFinite(t.totalQuantity) && t.totalQuantity > 0 ? t.totalQuantity : 0),
+    0,
+  );
+  const remainingCapacity = hasEffectiveCapacity ? effectiveCapacity - totalAllocatedTickets : null;
+  const isOverCapacity = hasEffectiveCapacity && totalAllocatedTickets > effectiveCapacity;
+
+  const validateTicketTiers = (): string | null => {
+    if (ticketTiers.length === 0) {
+      return "Vui lòng thêm ít nhất 1 hạng vé và giá vé trước khi gửi duyệt.";
+    }
+
+    for (let i = 0; i < ticketTiers.length; i += 1) {
+      const tier = ticketTiers[i];
+      const tierLabel = tier.name.trim() || `#${i + 1}`;
+      if (!tier.name.trim()) {
+        return `Vui lòng nhập tên cho hạng vé #${i + 1}.`;
+      }
+      if (!Number.isFinite(tier.price) || tier.price < 0) {
+        return `Giá vé của hạng "${tierLabel}" phải lớn hơn hoặc bằng 0.`;
+      }
+      if (!Number.isInteger(tier.totalQuantity) || tier.totalQuantity <= 0) {
+        return `Số lượng phát hành của hạng "${tierLabel}" phải là số nguyên dương.`;
+      }
+      if (!Number.isInteger(tier.maxPerOrder) || tier.maxPerOrder <= 0 || tier.maxPerOrder > tier.totalQuantity) {
+        return `Số vé tối đa/đơn của hạng "${tierLabel}" phải từ 1 đến ${tier.totalQuantity}.`;
+      }
+    }
+
+    if (hasEffectiveCapacity && totalAllocatedTickets > effectiveCapacity) {
+      return `Tổng số lượng vé phát hành (${totalAllocatedTickets.toLocaleString("vi-VN")}) vượt quá sức chứa địa điểm (${effectiveCapacity.toLocaleString("vi-VN")}).`;
+    }
+
+    return null;
+  };
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -99,52 +155,77 @@ export function OrganizerBuilderPage() {
         throw new Error("Thời gian kết thúc phải sau thời gian bắt đầu.");
       }
 
-      let resolvedVenueId = venueId;
-      if (venueMode === "new" || !resolvedVenueId) {
-        if (!newVenueName.trim() || !newVenueAddress.trim()) {
-          throw new Error("Vui lòng nhập đầy đủ tên và địa chỉ địa điểm tổ chức.");
-        }
-        resolvedVenueId = await ticketingApi.organizer.createVenue({
-          name: newVenueName.trim(),
-          address: newVenueAddress.trim(),
-          city: newVenueCity,
-          capacity: newVenueCapacity > 0 ? newVenueCapacity : undefined,
-        });
+      const tierError = validateTicketTiers();
+      if (tierError) {
+        throw new Error(tierError);
       }
 
-      const scheduleText = schedule
-        .filter((s) => s.title.trim())
-        .map((s) => `- ${s.time}: ${s.title}${s.desc.trim() ? ` (${s.desc.trim()})` : ""}`)
-        .join("\n");
-
-      const fullDescription = scheduleText
-        ? `${description.trim()}\n\nLịch trình:\n${scheduleText}`
-        : description.trim();
-
-      const eventId = await ticketingApi.organizer.createEvent({
-        categoryId,
-        venueId: resolvedVenueId,
-        title: title.trim(),
-        description: fullDescription,
-        startsAt: startDate.toISOString(),
-        endsAt: endDate.toISOString(),
-      });
-
-      if (posterFile && ["image/jpeg", "image/png", "image/webp"].includes(posterFile.type)) {
-        try {
-          await ticketingApi.organizer.uploadCoverImage(eventId, posterFile);
-        } catch (uploadErr) {
-          console.warn("[OrganizerBuilder] Bỏ qua lỗi tải ảnh bìa (R2 chưa cấu hình hoặc CORS):", uploadErr);
+      if (!createdDraftEventId.current) {
+        let resolvedVenueId = venueId;
+        if (venueMode === "new" || !resolvedVenueId) {
+          if (!newVenueName.trim() || !newVenueAddress.trim()) {
+            throw new Error("Vui lòng nhập đầy đủ tên và địa chỉ địa điểm tổ chức.");
+          }
+          resolvedVenueId = await ticketingApi.organizer.createVenue({
+            name: newVenueName.trim(),
+            address: newVenueAddress.trim(),
+            city: newVenueCity,
+            capacity: newVenueCapacity > 0 ? newVenueCapacity : undefined,
+          });
         }
+
+        const scheduleText = schedule
+          .filter((s) => s.title.trim())
+          .map((s) => `- ${s.time}: ${s.title}${s.desc.trim() ? ` (${s.desc.trim()})` : ""}`)
+          .join("\n");
+
+        const fullDescription = scheduleText
+          ? `${description.trim()}\n\nLịch trình:\n${scheduleText}`
+          : description.trim();
+
+        const newEventId = await ticketingApi.organizer.createEvent({
+          categoryId,
+          venueId: resolvedVenueId,
+          title: title.trim(),
+          description: fullDescription,
+          startsAt: startDate.toISOString(),
+          endsAt: endDate.toISOString(),
+        });
+
+        createdDraftEventId.current = newEventId;
+
+        if (posterFile && ["image/jpeg", "image/png", "image/webp"].includes(posterFile.type)) {
+          try {
+            await ticketingApi.organizer.uploadCoverImage(newEventId, posterFile);
+          } catch (uploadErr) {
+            console.warn("[OrganizerBuilder] Bỏ qua lỗi tải ảnh bìa (R2 chưa cấu hình hoặc CORS):", uploadErr);
+          }
+        }
+      }
+
+      const eventId = createdDraftEventId.current;
+
+      for (const tier of ticketTiers) {
+        if (createdTierIds.current.has(tier.id)) continue;
+        await ticketingApi.organizer.createTicketType(eventId, {
+          name: tier.name.trim(),
+          price: tier.price,
+          totalQuantity: tier.totalQuantity,
+          maxPerOrder: tier.maxPerOrder,
+        });
+        createdTierIds.current.add(tier.id);
       }
 
       await ticketingApi.organizer.submitEvent(eventId);
       return eventId;
     },
     onSuccess: async (eventId) => {
+      createdDraftEventId.current = null;
+      createdTierIds.current.clear();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["organizer", "events"] }),
         queryClient.invalidateQueries({ queryKey: ["events", "venues"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "events"] }),
       ]);
       navigate(`/organizer/inventory?eventId=${eventId}`);
     },
@@ -168,13 +249,14 @@ export function OrganizerBuilderPage() {
   return (
     <OrganizerLayout
       title="Tạo sự kiện mới"
-      subtitle="Hoàn thiện thông tin, tải poster và gửi Admin kiểm duyệt trực tiếp lên hệ thống."
+      subtitle="Hoàn thiện thông tin, poster, hạng vé & giá vé trước khi gửi Admin kiểm duyệt."
     >
       <div className="mb-6 flex flex-wrap gap-2">
         {[
           { num: 1 as const, label: "1. Thông tin & Địa điểm" },
           { num: 2 as const, label: "2. Poster & Key Visual" },
-          { num: 3 as const, label: "3. Lịch trình & Gửi duyệt" },
+          { num: 3 as const, label: "3. Hạng vé & Giá vé" },
+          { num: 4 as const, label: "4. Lịch trình & Gửi duyệt" },
         ].map((item) => (
           <button
             key={item.num}
@@ -456,7 +538,7 @@ export function OrganizerBuilderPage() {
                 Quay lại
               </button>
               <button type="button" onClick={() => setStep(3)} className="btn-primary">
-                Tiếp theo: Lịch trình
+                Tiếp theo: Hạng vé &amp; Giá vé
               </button>
             </div>
           </div>
@@ -464,6 +546,213 @@ export function OrganizerBuilderPage() {
 
         {step === 3 && (
           <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-bold text-[#182226]">
+                <Ticket size={17} className="text-[#F05B45]" />
+                <span>Thiết lập hạng vé &amp; giá vé</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setErrorMessage(null);
+                  setTicketTiers([
+                    ...ticketTiers,
+                    { id: `tier-${Date.now()}`, name: "", price: 500000, totalQuantity: 50, maxPerOrder: 4 },
+                  ]);
+                }}
+                className="btn-outline !py-1.5 !px-3 text-xs"
+              >
+                <Plus size={14} /> Thêm hạng vé
+              </button>
+            </div>
+
+            <div
+              className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-3 text-xs font-semibold ${
+                isOverCapacity
+                  ? "border-rose-300 bg-rose-50 text-rose-800"
+                  : "border-slate-200 bg-slate-50 text-[#526066]"
+              }`}
+            >
+              <span>
+                Đã phân bổ:{" "}
+                <span className="font-bold text-[#182226]">
+                  {hasEffectiveCapacity
+                    ? `${totalAllocatedTickets.toLocaleString("vi-VN")} / ${effectiveCapacity.toLocaleString("vi-VN")} sức chứa`
+                    : `${totalAllocatedTickets.toLocaleString("vi-VN")} vé`}
+                </span>
+                {hasEffectiveCapacity && !isOverCapacity && remainingCapacity !== null && (
+                  <span> (còn {remainingCapacity.toLocaleString("vi-VN")} vé)</span>
+                )}
+              </span>
+              <span>Bắt buộc có ít nhất 1 hạng vé trước khi gửi Admin duyệt.</span>
+            </div>
+
+            {isOverCapacity && (
+              <div className="flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-700">
+                <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                <span>
+                  Tổng số lượng vé phát hành ({totalAllocatedTickets.toLocaleString("vi-VN")}) vượt quá sức chứa địa điểm (
+                  {effectiveCapacity?.toLocaleString("vi-VN")}). Vui lòng điều chỉnh lại số lượng.
+                </span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {ticketTiers.map((tier, index) => (
+                <div
+                  key={tier.id}
+                  className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-12 sm:items-end"
+                >
+                  <div className="sm:col-span-4">
+                    <label htmlFor={`tier-name-${tier.id}`} className={labelClass}>
+                      Tên hạng vé #{index + 1}
+                    </label>
+                    <input
+                      id={`tier-name-${tier.id}`}
+                      className={inputClass}
+                      placeholder="VD: Standard, VIP, Early Bird..."
+                      value={tier.name}
+                      onChange={(e) => {
+                        const next = [...ticketTiers];
+                        next[index] = { ...tier, name: e.target.value };
+                        setTicketTiers(next);
+                      }}
+                      required
+                    />
+                  </div>
+                  <div className="sm:col-span-3">
+                    <label htmlFor={`tier-price-${tier.id}`} className={labelClass}>
+                      Giá vé (VNĐ)
+                    </label>
+                    <input
+                      id={`tier-price-${tier.id}`}
+                      type="number"
+                      min={0}
+                      step={10000}
+                      className={inputClass}
+                      value={tier.price}
+                      onChange={(e) => {
+                        const next = [...ticketTiers];
+                        next[index] = { ...tier, price: Number(e.target.value) };
+                        setTicketTiers(next);
+                      }}
+                      required
+                    />
+                    <p className="mt-1 text-[11px] font-semibold text-[#526066]">
+                      {tier.price === 0 ? "Miễn phí" : Number.isFinite(tier.price) && tier.price > 0 ? formatVnd(tier.price) : "—"}
+                    </p>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor={`tier-qty-${tier.id}`} className={labelClass}>
+                      Số lượng phát hành
+                    </label>
+                    <input
+                      id={`tier-qty-${tier.id}`}
+                      type="number"
+                      min={1}
+                      className={inputClass}
+                      value={tier.totalQuantity}
+                      onChange={(e) => {
+                        const next = [...ticketTiers];
+                        next[index] = { ...tier, totalQuantity: Number(e.target.value) };
+                        setTicketTiers(next);
+                      }}
+                      required
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label htmlFor={`tier-max-${tier.id}`} className={labelClass}>
+                      Tối đa/đơn
+                    </label>
+                    <input
+                      id={`tier-max-${tier.id}`}
+                      type="number"
+                      min={1}
+                      className={inputClass}
+                      value={tier.maxPerOrder}
+                      onChange={(e) => {
+                        const next = [...ticketTiers];
+                        next[index] = { ...tier, maxPerOrder: Number(e.target.value) };
+                        setTicketTiers(next);
+                      }}
+                      required
+                    />
+                  </div>
+                  <div className="sm:col-span-1 flex sm:justify-end">
+                    <button
+                      type="button"
+                      aria-label={`Xóa hạng vé ${tier.name || index + 1}`}
+                      disabled={ticketTiers.length <= 1}
+                      onClick={() => setTicketTiers(ticketTiers.filter((t) => t.id !== tier.id))}
+                      className="flex h-10 w-full sm:w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-[#526066] hover:border-rose-400 hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-between pt-2">
+              <button type="button" onClick={() => setStep(2)} className="btn-outline">
+                Quay lại
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const err = validateTicketTiers();
+                  if (err) {
+                    setErrorMessage(err);
+                    return;
+                  }
+                  setErrorMessage(null);
+                  setStep(4);
+                }}
+                className="btn-primary"
+              >
+                Tiếp theo: Lịch trình
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2 text-sm font-bold text-[#182226]">
+                  <Ticket size={16} className="text-[#F05B45]" />
+                  <span>
+                    Tóm tắt hạng vé &amp; giá vé gửi Admin duyệt ({ticketTiers.length} hạng ·{" "}
+                    {totalAllocatedTickets.toLocaleString("vi-VN")} vé)
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setStep(3)}
+                  className="text-xs font-bold text-[#D94735] hover:underline cursor-pointer"
+                >
+                  Chỉnh sửa hạng vé
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {ticketTiers.map((tier) => (
+                  <span
+                    key={tier.id}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#182226]"
+                  >
+                    <span>{tier.name.trim() || "Chưa đặt tên"}</span>
+                    <span className="text-[#526066]">·</span>
+                    <span className="text-[#D94735]">
+                      {tier.price === 0 ? "Miễn phí" : formatVnd(tier.price)}
+                    </span>
+                    <span className="text-[#526066]">·</span>
+                    <span>{tier.totalQuantity.toLocaleString("vi-VN")} vé (tối đa {tier.maxPerOrder}/đơn)</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-sm font-bold text-[#182226]">
                 <Calendar size={17} className="text-[#F05B45]" />
@@ -534,7 +823,7 @@ export function OrganizerBuilderPage() {
             </div>
 
             <div className="flex justify-between pt-2">
-              <button type="button" onClick={() => setStep(2)} className="btn-outline">
+              <button type="button" onClick={() => setStep(3)} className="btn-outline">
                 Quay lại
               </button>
               <button type="submit" disabled={createMutation.isPending} className="btn-primary">
