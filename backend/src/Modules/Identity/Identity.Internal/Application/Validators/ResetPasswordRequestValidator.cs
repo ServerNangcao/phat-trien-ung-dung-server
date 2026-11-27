@@ -13,7 +13,8 @@ internal sealed class ResetPasswordRequestValidator : AbstractValidator<ResetPas
             .MaximumLength(256).WithMessage("Email không được vượt quá 256 ký tự.");
 
         RuleFor(x => x.Token)
-            .NotEmpty().WithMessage("Mã xác thực không được để trống.");
+            .NotEmpty().WithMessage("Mã xác nhận không được để trống.")
+            .Matches(@"^\s*\d{6}\s*$").WithMessage("Mã xác nhận phải gồm đúng 6 chữ số.");
 
         RuleFor(x => x.NewPassword)
             .NotEmpty().WithMessage("Mật khẩu mới không được để trống.")

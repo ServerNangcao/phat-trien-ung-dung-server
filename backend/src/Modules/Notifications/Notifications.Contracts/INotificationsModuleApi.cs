@@ -1,4 +1,4 @@
-﻿namespace Notifications.Contracts;
+namespace Notifications.Contracts;
 
 /// <summary>
 /// API công khai của module Notifications.
@@ -6,4 +6,13 @@
 /// </summary>
 public interface INotificationsModuleApi
 {
+    /// <summary>
+    /// Gửi email chứa mã OTP 6 chữ số để xác nhận đặt lại mật khẩu.
+    /// </summary>
+    Task SendPasswordResetOtpAsync(
+        string toEmail,
+        string fullName,
+        string otpCode,
+        int expiresInMinutes,
+        CancellationToken cancellationToken = default);
 }

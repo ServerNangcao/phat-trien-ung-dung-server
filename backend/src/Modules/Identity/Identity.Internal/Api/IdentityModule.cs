@@ -71,7 +71,9 @@ public static class IdentityModule
         });
 
         services.AddAuthorization();
+        services.Configure<PasswordResetOptions>(configuration.GetSection(PasswordResetOptions.SectionName));
         services.AddScoped<JwtTokenService>();
+        services.AddScoped<PasswordResetOtpService>();
 
         services.AddModuleValidators(typeof(IdentityModule).Assembly);
 

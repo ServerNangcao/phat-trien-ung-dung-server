@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { ArrowLeft, ArrowRight, Briefcase, Check, KeyRound, Mail, QrCode, ShieldCheck, Sparkles, UserRound } from "lucide-react";
@@ -51,12 +51,23 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   const [demoOtp, setDemoOtp] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [token, setToken] = useState("");
+
+  useEffect(() => {
+    if (resendCooldown <= 0) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setResendCooldown((prev) => (prev > 1 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -96,8 +107,8 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
         setLoading(false);
         return;
       }
-      if (!token.trim()) {
-        setError("Vui lòng nhập mã xác thực (OTP / Token).");
+      if (!/^\d{6}$/.test(token.trim())) {
+        setError("Vui lòng nhập đủ mã xác nhận gồm 6 chữ số.");
         setLoading(false);
         return;
       }
@@ -127,9 +138,13 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
         }
         const res = await forgotPassword(email.trim());
         setInfoMessage(res.message);
+        setResendCooldown(res.cooldownSeconds ?? 60);
         if (res.resetToken) {
           setDemoOtp(res.resetToken);
           setToken(res.resetToken);
+        } else {
+          setDemoOtp(null);
+          setToken("");
         }
         // Chuyển sang màn hình nhập OTP / mật khẩu mới
         setMode("reset");
@@ -171,12 +186,45 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
     }
   };
 
+  const handleResendOtp = async () => {
+    if (loading || resendCooldown > 0) {
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError("Vui lòng nhập địa chỉ email hợp lệ.");
+      return;
+    }
+    if (!forgotPassword) {
+      setError("Tính năng quên mật khẩu chưa được cấu hình.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      const res = await forgotPassword(email.trim());
+      setInfoMessage(res.message);
+      setResendCooldown(res.cooldownSeconds ?? 60);
+      if (res.resetToken) {
+        setDemoOtp(res.resetToken);
+        setToken(res.resetToken);
+      } else {
+        setDemoOtp(null);
+      }
+    } catch (exception) {
+      setError(extractErrorMessage(exception, "Không thể gửi lại mã xác nhận."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const changeMode = (nextMode: "login" | "register" | "forgot" | "reset") => {
     setMode(nextMode);
     setError("");
     if (nextMode === "login" || nextMode === "register") {
       setInfoMessage("");
       setDemoOtp(null);
+      setResendCooldown(0);
     }
     setPassword("");
     setConfirmPassword("");
@@ -280,8 +328,8 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
             : mode === "register"
               ? "Đăng ký tài khoản khách hàng để lưu và quản lý vé."
               : mode === "forgot"
-                ? "Nhập email đã đăng ký của bạn để nhận mã OTP hoặc hướng dẫn đặt lại mật khẩu."
-                : "Nhập mã xác thực đã nhận cùng mật khẩu mới để hoàn tất khôi phục tài khoản."}
+                ? "Nhập email đã đăng ký để nhận mã xác nhận gồm 6 chữ số qua hộp thư của bạn."
+                : "Nhập mã xác nhận 6 chữ số đã gửi về email cùng mật khẩu mới để hoàn tất khôi phục tài khoản."}
         </p>
 
         {mode === "login" && isDemoMode && (
@@ -363,13 +411,17 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
 
           {mode === "reset" && (
             <label className="form-field">
-              <span>Mã xác thực (OTP / Token)</span>
+              <span>Mã xác nhận (6 chữ số)</span>
               <div style={{ position: "relative" }}>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
                   value={token}
-                  onChange={(event) => setToken(event.target.value)}
-                  placeholder="Nhập mã OTP hoặc mã xác thực"
+                  onChange={(event) => setToken(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="Nhập mã 6 số từ email"
+                  style={{ letterSpacing: token ? 4 : undefined, fontWeight: token ? 600 : undefined }}
                 />
               </div>
             </label>
@@ -525,7 +577,26 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
         )}
 
         {mode === "reset" && (
-          <div style={{ textAlign: "center", marginTop: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <button
+              type="button"
+              disabled={loading || resendCooldown > 0}
+              onClick={() => void handleResendOtp()}
+              style={{
+                background: "none",
+                border: "none",
+                color: resendCooldown > 0 ? "var(--surface-muted, #9a9490)" : "var(--accent, #c84b36)",
+                fontSize: "11px",
+                fontWeight: 600,
+                cursor: resendCooldown > 0 || loading ? "not-allowed" : "pointer",
+                textDecoration: resendCooldown > 0 ? "none" : "underline",
+                padding: 0,
+              }}
+            >
+              {resendCooldown > 0
+                ? `Gửi lại mã sau ${resendCooldown}s`
+                : "Chưa nhận được mã? Gửi lại mã xác nhận"}
+            </button>
             <button
               type="button"
               onClick={() => changeMode("forgot")}
@@ -536,9 +607,10 @@ export function LoginPage({ login, register, forgotPassword, resetPassword }: Lo
                 fontSize: "11px",
                 cursor: "pointer",
                 textDecoration: "underline",
+                padding: 0,
               }}
             >
-              Chưa nhận được mã? Gửi lại mã xác nhận
+              Đổi email khác
             </button>
           </div>
         )}

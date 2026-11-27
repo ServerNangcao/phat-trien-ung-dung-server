@@ -7,9 +7,12 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Notifications.Contracts;
 using Ticketing.Infrastructure.Core;
 using Ticketing.SharedKernel;
 
@@ -20,6 +23,7 @@ namespace Identity.Internal.Api;
 /// </summary>
 internal static class IdentityEndpoints
 {
+    internal const string PasswordResetRateLimitPolicy = "auth-password-reset";
     private static readonly string[] ValidRoles = ["Customer", "Staff", "Organizer", "Admin"];
 
     public static IEndpointRouteBuilder MapIdentityEndpointsInternal(this IEndpointRouteBuilder app)
@@ -34,8 +38,10 @@ internal static class IdentityEndpoints
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         group.MapPost("/login", LoginAsync);
         group.MapPost("/refresh", RefreshAsync);
-        group.MapPost("/forgot-password", ForgotPasswordAsync);
-        group.MapPost("/reset-password", ResetPasswordAsync);
+        group.MapPost("/forgot-password", ForgotPasswordAsync)
+            .RequireRateLimiting(PasswordResetRateLimitPolicy);
+        group.MapPost("/reset-password", ResetPasswordAsync)
+            .RequireRateLimiting(PasswordResetRateLimitPolicy);
 
         // ── Protected endpoints (yêu cầu JWT) ──
         group.MapGet("/me", GetProfileAsync).RequireAuthorization();
@@ -392,72 +398,130 @@ internal static class IdentityEndpoints
     }
 
     /// <summary>
-    /// POST /api/identity/forgot-password — Yêu cầu link/mã đặt lại mật khẩu.
+    /// POST /api/identity/forgot-password — Gửi mã OTP 6 chữ số đặt lại mật khẩu về email.
     /// </summary>
-    private static async Task<IResult> ForgotPasswordAsync(
+    internal static async Task<IResult> ForgotPasswordAsync(
         ForgotPasswordRequest request,
         IValidator<ForgotPasswordRequest> validator,
         UserManager<ApplicationUser> userManager,
+        PasswordResetOtpService otpService,
+        INotificationsModuleApi notificationsApi,
+        IOptions<PasswordResetOptions> passwordResetOptions,
         ILoggerFactory loggerFactory,
-        IWebHostEnvironment env)
+        IWebHostEnvironment env,
+        CancellationToken cancellationToken = default)
     {
+        const string neutralMessage = "Nếu email tồn tại trong hệ thống, mã xác nhận đặt lại mật khẩu đã được gửi.";
+
         var logger = loggerFactory.CreateLogger("Identity.ForgotPassword");
-        var validationResult = await validator.ValidateAsync(request);
+        var validationResult = await validator.ValidateAsync(request, cancellationToken);
         if (!validationResult.IsValid)
         {
             var error = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
             return Result.Validation(error).ToHttpResult();
         }
 
-        var user = await userManager.FindByEmailAsync(request.Email);
+        var options = passwordResetOptions.Value;
+        var user = await userManager.FindByEmailAsync(request.Email.Trim());
         if (user is null || !user.IsActive)
         {
             return Results.Ok(new ForgotPasswordResponse(
-                "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi."));
+                neutralMessage,
+                ResetToken: null,
+                CooldownSeconds: Math.Max(0, options.ResendCooldownSeconds)));
         }
 
-        var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        logger.LogInformation("Password reset token generated for user {Email}", user.Email);
+        var issueResult = await otpService.IssueOtpAsync(user, cancellationToken);
+        if (!issueResult.IsThrottled && issueResult.OtpCode is not null)
+        {
+            try
+            {
+                var expirationMinutes = Math.Clamp(options.ExpirationMinutes, 1, 60);
+                await notificationsApi.SendPasswordResetOtpAsync(
+                    user.Email!,
+                    user.FullName,
+                    issueResult.OtpCode,
+                    expirationMinutes,
+                    cancellationToken);
+
+                logger.LogInformation("Password reset OTP sent to {Email}", user.Email);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Failed to send password reset OTP email to {Email}", user.Email);
+                if (issueResult.OtpId.HasValue)
+                {
+                    await otpService.RevokeOtpAsync(issueResult.OtpId.Value, cancellationToken);
+                }
+
+                return Results.Problem(
+                    title: "Service Unavailable",
+                    detail: "Không thể gửi email xác nhận lúc này. Vui lòng thử lại sau.",
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        }
+        else if (issueResult.IsThrottled)
+        {
+            logger.LogInformation(
+                "Password reset OTP request throttled for {Email}; retry after {CooldownSeconds}s",
+                user.Email,
+                issueResult.CooldownSeconds);
+        }
 
         var isDevOrTest = string.Equals(env.EnvironmentName, "Development", StringComparison.OrdinalIgnoreCase) ||
                           string.Equals(env.EnvironmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+        var exposeDevOtp = options.ExposeDevOtpInResponse && isDevOrTest;
 
         return Results.Ok(new ForgotPasswordResponse(
-            "Nếu email tồn tại trong hệ thống, hướng dẫn đặt lại mật khẩu đã được gửi.",
-            ResetToken: isDevOrTest ? token : null));
+            neutralMessage,
+            ResetToken: exposeDevOtp ? issueResult.OtpCode : null,
+            CooldownSeconds: issueResult.CooldownSeconds));
     }
 
     /// <summary>
-    /// POST /api/identity/reset-password — Đặt lại mật khẩu bằng token/OTP.
+    /// POST /api/identity/reset-password — Đặt lại mật khẩu bằng mã OTP 6 chữ số.
     /// </summary>
-    private static async Task<IResult> ResetPasswordAsync(
+    internal static async Task<IResult> ResetPasswordAsync(
         ResetPasswordRequest request,
         IValidator<ResetPasswordRequest> validator,
         UserManager<ApplicationUser> userManager,
-        ILoggerFactory loggerFactory)
+        PasswordResetOtpService otpService,
+        JwtTokenService jwtTokenService,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken = default)
     {
         var logger = loggerFactory.CreateLogger("Identity.ResetPassword");
-        var validationResult = await validator.ValidateAsync(request);
+        var validationResult = await validator.ValidateAsync(request, cancellationToken);
         if (!validationResult.IsValid)
         {
             var error = string.Join("; ", validationResult.Errors.Select(e => e.ErrorMessage));
             return Result.Validation(error).ToHttpResult();
         }
 
-        var user = await userManager.FindByEmailAsync(request.Email);
+        var user = await userManager.FindByEmailAsync(request.Email.Trim());
         if (user is null || !user.IsActive)
         {
-            return Result.NotFound("Không tìm thấy người dùng hoặc yêu cầu không hợp lệ.").ToHttpResult();
+            return Result.Validation("Mã xác nhận không hợp lệ hoặc đã hết hạn.").ToHttpResult();
         }
 
-        var resetResult = await userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        var verifyResult = await otpService.VerifyOtpAsync(user, request.Token, cancellationToken);
+        if (!verifyResult.IsValid || !verifyResult.OtpId.HasValue)
+        {
+            return Result.Validation(verifyResult.ErrorMessage ?? "Mã xác nhận không hợp lệ.").ToHttpResult();
+        }
+
+        var identityResetToken = await userManager.GeneratePasswordResetTokenAsync(user);
+        var resetResult = await userManager.ResetPasswordAsync(user, identityResetToken, request.NewPassword);
         if (!resetResult.Succeeded)
         {
             var error = string.Join("; ", resetResult.Errors.Select(e => e.Description));
             return Result.Validation(error).ToHttpResult();
         }
 
-        logger.LogInformation("Password successfully reset for user {Email}", user.Email);
+        await otpService.MarkOtpUsedAsync(verifyResult.OtpId.Value, cancellationToken);
+        await jwtTokenService.RevokeAllRefreshTokensAsync(user.Id);
+
+        logger.LogInformation("Password successfully reset via OTP for user {Email}", user.Email);
         return Results.Ok(new ResetPasswordResponse("Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới."));
     }
 

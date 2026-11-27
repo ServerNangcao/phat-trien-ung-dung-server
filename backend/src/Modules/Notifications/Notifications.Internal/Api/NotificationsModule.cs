@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Notifications.Contracts;
 using Notifications.Internal.Application;
 using Notifications.Internal.Infrastructure;
 using Ticketing.Contracts;
@@ -35,6 +36,7 @@ public static class NotificationsModule
             services.AddScoped<IEmailService, EmailService>();
         }
 
+        services.AddScoped<INotificationsModuleApi, NotificationsModuleApi>();
         services.AddHostedService<EmailRetryWorker>();
 
         // 3. Đăng ký Integration Event Handler (Điểm 2: lắng nghe TicketIssued, Điểm 4: Outbox/Inbox)

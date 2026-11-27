@@ -140,6 +140,7 @@ export function useSession() {
       return {
         message: "Mã OTP đặt lại mật khẩu đã được tạo và gửi đến email của bạn.",
         resetToken: mockOtp,
+        cooldownSeconds: 60,
       };
     }
 

@@ -66,7 +66,7 @@ internal sealed partial class SmtpEmailService : IEmailService
         await client.SendAsync(message, timeoutCts.Token);
         await client.DisconnectAsync(true, timeoutCts.Token);
 
-        _logger.LogInformation("Sent SMTP ticket email to {Recipient}: {Subject}", toEmail, subject);
+        _logger.LogInformation("Sent SMTP email to {Recipient}: {Subject}", toEmail, subject);
     }
 
     internal static MimeMessage BuildMimeMessage(

@@ -276,6 +276,59 @@ public class TicketNotificationTests : IDisposable
         }
     }
 
+    [Fact]
+    public void PasswordResetEmailRenderer_Encodes_Html_And_Includes_Otp_And_Expiry()
+    {
+        var html = PasswordResetEmailRenderer.RenderPasswordResetOtpHtml(
+            "<b>Nguyen Van A</b>",
+            "482910",
+            10);
+
+        Assert.Contains("&lt;b&gt;Nguyen Van A&lt;/b&gt;", html);
+        Assert.DoesNotContain("<b>Nguyen Van A</b>", html);
+        Assert.Contains("482910", html);
+        Assert.Contains("10 phút", html);
+    }
+
+    [Fact]
+    public async Task NotificationsModuleApi_SendPasswordResetOtpAsync_Dispatches_Email_With_Expected_Subject_And_Otp()
+    {
+        var capturingEmail = new CapturingEmailService();
+        var api = new NotificationsModuleApi(capturingEmail, NullLogger<NotificationsModuleApi>.Instance);
+
+        await api.SendPasswordResetOtpAsync(
+            "  user@example.com ",
+            "Nguyen Van A",
+            "739201",
+            10,
+            CancellationToken.None);
+
+        Assert.Equal("user@example.com", capturingEmail.LastRecipient);
+        Assert.Equal("[Ticketing Platform] Mã xác nhận đặt lại mật khẩu", capturingEmail.LastSubject);
+        Assert.NotNull(capturingEmail.LastBody);
+        Assert.Contains("739201", capturingEmail.LastBody);
+        Assert.Contains("10 phút", capturingEmail.LastBody);
+    }
+
+    private sealed class CapturingEmailService : IEmailService
+    {
+        public string? LastRecipient { get; private set; }
+        public string? LastSubject { get; private set; }
+        public string? LastBody { get; private set; }
+
+        public Task SendEmailAsync(
+            string toEmail,
+            string subject,
+            string body,
+            CancellationToken cancellationToken = default)
+        {
+            LastRecipient = toEmail;
+            LastSubject = subject;
+            LastBody = body;
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class FlakyEmailService(int failuresBeforeSuccess) : IEmailService
     {
         private int _calls;

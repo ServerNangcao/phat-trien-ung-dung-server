@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using Identity.Internal.Api;
 using Events.Internal.Api;
 using Ticketing.Internal.Api;
@@ -7,6 +8,7 @@ using Notifications.Internal.Api;
 using Ticketing.Infrastructure.Core;
 using Ticketing.Api.Extensions;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +21,34 @@ builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks();
 builder.Services.AddAuthentication();
 builder.Services.AddAuthorization();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.ContentType = "application/problem+json";
+        await context.HttpContext.Response.WriteAsJsonAsync(new
+        {
+            title = "Too Many Requests",
+            status = StatusCodes.Status429TooManyRequests,
+            detail = "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút."
+        }, cancellationToken);
+    };
+
+    options.AddPolicy("auth-password-reset", httpContext =>
+    {
+        var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            remoteIp,
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
+});
 
 builder.Services.AddCors(options =>
 {
@@ -63,6 +93,7 @@ app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.UseSecurityHeaders();
 app.UseCors();
+app.UseRateLimiter();
 
 var shouldApplyMigrations = app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("ApplyMigrationsOnStartup");
 if (shouldApplyMigrations)

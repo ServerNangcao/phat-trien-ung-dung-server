@@ -121,6 +121,7 @@ export interface ForgotPasswordRequest {
 export interface ForgotPasswordResponse {
   message: string;
   resetToken?: string;
+  cooldownSeconds?: number;
 }
 
 export interface ResetPasswordRequest {
